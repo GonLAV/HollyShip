@@ -1,0 +1,6 @@
+node_modules
+dist
+.prisma
+.git
+.vscode
+.DS_Store

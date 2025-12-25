@@ -1,0 +1,136 @@
+{
+  "info": {
+    "name": "HollyShip API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/health"
+      }
+    },
+    {
+      "name": "Auth - Email Start",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "content-type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{email}}\"\n}"
+        },
+        "url": "{{baseUrl}}/v1/auth/email/start"
+      }
+    },
+    {
+      "name": "Auth - Email Verify (set token)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status 200', function () { pm.response.to.have.status(200); });",
+              "const json = pm.response.json();",
+              "pm.environment.set('token', json.token || '');",
+              "pm.test('token present', function () { pm.expect(pm.environment.get('token')).to.not.equal(''); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "content-type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{email}}\",\n  \"code\": \"PASTE_CODE_FROM_EMAIL_START\"\n}"
+        },
+        "url": "{{baseUrl}}/v1/auth/email/verify"
+      },
+      "description": "NOTE: Replace code with the code returned by Auth - Email Start (demo mode returns code)."
+    },
+    {
+      "name": "Stats - Stream (SSE)",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/v1/stats/stream"
+      },
+      "description": "This is an SSE endpoint (EventSource in browser). In Postman you can still hit it to see streaming output."
+    },
+    {
+      "name": "Shipments - Create",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status 200', function () { pm.response.to.have.status(200); });",
+              "const json = pm.response.json();",
+              "pm.environment.set('shipmentId', json.id || '');",
+              "pm.test('shipmentId present', function () { pm.expect(pm.environment.get('shipmentId')).to.not.equal(''); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "content-type", "value": "application/json" },
+          { "key": "authorization", "value": "Bearer {{token}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"trackingNumber\": \"1Z999AA10123456784\",\n  \"hintCarrier\": \"AUTO\",\n  \"destination\": \"New York, NY\"\n}"
+        },
+        "url": "{{baseUrl}}/v1/shipments/resolve"
+      }
+    },
+    {
+      "name": "Shipments - List",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "authorization", "value": "Bearer {{token}}" }],
+        "url": "{{baseUrl}}/v1/shipments?limit=50"
+      }
+    },
+    {
+      "name": "Shipments - Chain",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "authorization", "value": "Bearer {{token}}" }],
+        "url": "{{baseUrl}}/v1/shipments/{{shipmentId}}/chain"
+      }
+    },
+    {
+      "name": "Shipments - Simulate Status",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "content-type", "value": "application/json" },
+          { "key": "authorization", "value": "Bearer {{token}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"IN_TRANSIT\"\n}"
+        },
+        "url": "{{baseUrl}}/v1/shipments/{{shipmentId}}/simulate-status"
+      }
+    },
+    {
+      "name": "Me - Export",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "authorization", "value": "Bearer {{token}}" }],
+        "url": "{{baseUrl}}/v1/me/export"
+      }
+    },
+    {
+      "name": "Me - Delete",
+      "request": {
+        "method": "DELETE",
+        "header": [{ "key": "authorization", "value": "Bearer {{token}}" }],
+        "url": "{{baseUrl}}/v1/me"
+      }
+    }
+  ]
+}

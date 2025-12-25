@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="800" height="450" viewBox="0 0 800 450" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">HollyShip Logo</title>
+  <desc id="desc">A clean winged package box and the text HollyShip.</desc>
+
+  <!-- Dark background (set display to none if you want transparent background) -->
+  <rect x="0" y="0" width="800" height="450" fill="#24343A" />
+
+  <g transform="translate(400,175)">
+    <!-- Left wing (Talaria-inspired) -->
+    <path
+      fill="#F1EFE8"
+      d="M -210,-10 c -12,-28 10,-60 28,-75 c 15,-12 33,-20 45,-6 c 10,12 -5,28 -20,35
+         c 16,-8 30,-6 34,6 c 6,16 -10,28 -26,30 c 18,-5 28,2 26,16 c -3,18 -24,28 -48,26
+         c -16,-2 -30,-12 -39,-28 z"
+    />
+    <!-- Right wing -->
+    <path
+      fill="#F1EFE8"
+      d="M 210,-10 c 12,-28 -10,-60 -28,-75 c -15,-12 -33,-20 -45,-6 c -10,12 5,28 20,35
+         c -16,-8 -30,-6 -34,6 c -6,16 10,28 26,30 c -18,-5 -28,2 -26,16 c 3,18 24,28 48,26
+         c 16,-2 30,-12 39,-28 z"
+    />
+
+    <!-- Box (isometric) -->
+    <polygon fill="#F1EFE8" points="-70,-70 0,-100 70,-70 0,-40" />
+    <polygon fill="#F1EFE8" points="-70,-70 -70,20 0,50 0,-40" />
+    <polygon fill="#F1EFE8" points="70,-70 70,20 0,50 0,-40" />
+
+    <!-- Tape / strokes -->
+    <path d="M -15,-88 L -15,-48" stroke="#F1EFE8" stroke-width="10" stroke-linecap="round" />
+    <path d="M 15,-88 L 15,-48" stroke="#F1EFE8" stroke-width="10" stroke-linecap="round" />
+    <path d="M -70,-70 L 70,-70" stroke="#F1EFE8" stroke-width="10" stroke-linecap="round" />
+    <path d="M 0,-40 L 0,50" stroke="#F1EFE8" stroke-width="10" stroke-linecap="round" />
+    <path d="M -70,20 L 0,50 L 70,20" stroke="#F1EFE8" stroke-width="10" stroke-linecap="round" fill="none" />
+  </g>
+
+  <text
+    x="400"
+    y="360"
+    text-anchor="middle"
+    font-size="84"
+    font-family="Georgia, 'Times New Roman', serif"
+    fill="#F1EFE8"
+  >
+    HollyShip
+  </text>
+</svg>
