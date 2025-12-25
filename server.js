@@ -1,6 +1,5 @@
 const express = require('express');
 const cors = require('cors');
-const bodyParser = require('body-parser');
 const nodemailer = require('nodemailer');
 require('dotenv').config();
 
@@ -9,12 +8,13 @@ const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors());
-app.use(bodyParser.json());
+app.use(express.json());
 app.use(express.static('public'));
 
 // In-memory database for demo purposes
 const shipments = new Map();
 const trackingHistory = new Map();
+let nextShipmentId = 100001; // Counter for unique IDs
 
 // Email transporter configuration
 const transporter = nodemailer.createTransport({
@@ -73,6 +73,11 @@ const sampleShipments = [
 
 sampleShipments.forEach(shipment => {
   shipments.set(shipment.id, shipment);
+  // Update counter to be higher than any sample ID
+  const idNum = parseInt(shipment.id.replace('HS', ''));
+  if (idNum >= nextShipmentId) {
+    nextShipmentId = idNum + 1;
+  }
   trackingHistory.set(shipment.id, [
     {
       timestamp: new Date('2024-12-24T10:00:00'),
@@ -119,10 +124,15 @@ async function sendEmailNotification(email, trackingId, status, message) {
   };
 
   try {
-    // In demo mode, just log instead of actually sending
-    console.log(`📧 Email notification sent to ${email} for tracking ${trackingId}`);
-    console.log(`   Status: ${status} - ${message}`);
-    // await transporter.sendMail(mailOptions);
+    // Send email in production, log in demo mode
+    if (process.env.EMAIL_ENABLED === 'true') {
+      await transporter.sendMail(mailOptions);
+      console.log(`📧 Email sent to ${email} for tracking ${trackingId}`);
+    } else {
+      // Demo mode - just log instead of sending
+      console.log(`📧 Email notification sent to ${email} for tracking ${trackingId}`);
+      console.log(`   Status: ${status} - ${message}`);
+    }
     return true;
   } catch (error) {
     console.error('Error sending email:', error);
@@ -203,7 +213,7 @@ app.post('/api/shipment', async (req, res) => {
     dimensions
   } = req.body;
 
-  const id = `HS${100000 + shipments.size + 1}`;
+  const id = `HS${nextShipmentId++}`;
   
   const newShipment = {
     id,
