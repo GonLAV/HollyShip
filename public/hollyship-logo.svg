@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="980" height="340" viewBox="0 0 980 340" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="gText" x1="360" y1="240" x2="900" y2="120" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4FACFE"/>
+      <stop offset="0.55" stop-color="#8FB3E8"/>
+      <stop offset="1" stop-color="#E7EEF9"/>
+    </linearGradient>
+    <filter id="fText" x="0" y="0" width="980" height="340" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <!-- Icon (re-use the standalone icon via inline group for portability) -->
+  <g transform="translate(40 20) scale(0.55)">
+    <defs>
+      <linearGradient id="gBoxTop" x1="156" y1="160" x2="356" y2="300" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#BFD7FF"/>
+        <stop offset="0.45" stop-color="#4FACFE"/>
+        <stop offset="1" stop-color="#E7EEF9"/>
+      </linearGradient>
+      <linearGradient id="gBoxSide" x1="128" y1="220" x2="384" y2="392" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#1E2B55"/>
+        <stop offset="0.55" stop-color="#2F5EA6"/>
+        <stop offset="1" stop-color="#A8B6D6"/>
+      </linearGradient>
+      <linearGradient id="gSilver" x1="60" y1="140" x2="180" y2="300" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#F4F7FF"/>
+        <stop offset="0.5" stop-color="#9FB0D3"/>
+        <stop offset="1" stop-color="#EEF3FF"/>
+      </linearGradient>
+      <linearGradient id="gGold" x1="180" y1="210" x2="330" y2="360" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#FFF2B2"/>
+        <stop offset="0.45" stop-color="#FFD700"/>
+        <stop offset="1" stop-color="#F5A623"/>
+      </linearGradient>
+      <linearGradient id="gWingBlue" x1="40" y1="180" x2="140" y2="320" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#BFD7FF" stop-opacity="0.8"/>
+        <stop offset="1" stop-color="#00F2FE" stop-opacity="0.0"/>
+      </linearGradient>
+      <filter id="fShadow" x="0" y="0" width="512" height="512" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+        <feDropShadow dx="0" dy="14" stdDeviation="14" flood-color="#000000" flood-opacity="0.35"/>
+      </filter>
+      <filter id="fGlow" x="-60" y="-60" width="632" height="632" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+        <feDropShadow dx="0" dy="0" stdDeviation="14" flood-color="#4FACFE" flood-opacity="0.35"/>
+        <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#00F2FE" flood-opacity="0.25"/>
+      </filter>
+      <radialGradient id="gSpec" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(240 220) rotate(45) scale(170 120)">
+        <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.65"/>
+        <stop offset="0.55" stop-color="#FFFFFF" stop-opacity="0.12"/>
+        <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+      </radialGradient>
+    </defs>
+
+    <g filter="url(#fGlow)">
+      <g opacity="0.95">
+        <path d="M122 238c-40 0-72 30-72 70 0 21 9 40 23 53 10 10 24 18 40 21 7 1 14-3 15-10 1-7-3-13-10-15-10-2-19-7-25-14-8-8-13-19-13-35 0-25 19-45 42-45h10c10 0 18-8 18-18s-8-18-18-18h-10Z" fill="url(#gSilver)"/>
+        <path d="M138 252c-33 2-58 29-58 60 0 16 6 30 16 41 7 8 17 13 28 16 5 1 9-2 10-7 1-5-2-9-7-10-8-2-15-6-20-12-7-7-11-17-11-28 0-22 16-40 38-42 5 0 9-5 9-10s-2-9-5-8Z" fill="url(#gWingBlue)"/>
+        <path d="M150 270c-24 8-44 28-54 54 14-7 30-11 45-11 8-20 17-33 29-43Z" fill="url(#gSilver)" opacity="0.9"/>
+        <path d="M150 300c-20 7-36 21-45 40 12-5 25-7 37-6 6-13 12-24 18-34Z" fill="url(#gSilver)" opacity="0.88"/>
+        <path d="M152 328c-15 5-27 14-34 27 10-2 19-2 28 0 2-9 4-18 6-27Z" fill="url(#gSilver)" opacity="0.85"/>
+      </g>
+
+      <g opacity="0.95" transform="translate(512 0) scale(-1 1)">
+        <path d="M122 238c-40 0-72 30-72 70 0 21 9 40 23 53 10 10 24 18 40 21 7 1 14-3 15-10 1-7-3-13-10-15-10-2-19-7-25-14-8-8-13-19-13-35 0-25 19-45 42-45h10c10 0 18-8 18-18s-8-18-18-18h-10Z" fill="url(#gSilver)"/>
+        <path d="M138 252c-33 2-58 29-58 60 0 16 6 30 16 41 7 8 17 13 28 16 5 1 9-2 10-7 1-5-2-9-7-10-8-2-15-6-20-12-7-7-11-17-11-28 0-22 16-40 38-42 5 0 9-5 9-10s-2-9-5-8Z" fill="url(#gWingBlue)"/>
+        <path d="M150 270c-24 8-44 28-54 54 14-7 30-11 45-11 8-20 17-33 29-43Z" fill="url(#gSilver)" opacity="0.9"/>
+        <path d="M150 300c-20 7-36 21-45 40 12-5 25-7 37-6 6-13 12-24 18-34Z" fill="url(#gSilver)" opacity="0.88"/>
+        <path d="M152 328c-15 5-27 14-34 27 10-2 19-2 28 0 2-9 4-18 6-27Z" fill="url(#gSilver)" opacity="0.85"/>
+      </g>
+
+      <g filter="url(#fShadow)">
+        <path d="M176 170c0-10 8-18 18-18h124c10 0 18 8 18 18v28c0 8-5 15-12 17l-68 22-68-22c-7-2-12-9-12-17v-28Z" fill="url(#gBoxTop)"/>
+        <path d="M160 210c0-8 5-15 12-17l84-27 84 27c7 2 12 9 12 17v150c0 10-8 18-18 18H178c-10 0-18-8-18-18V210Z" fill="url(#gBoxSide)"/>
+        <path d="M176 220c0-7 5-14 12-16l56-17 28 9-60 164h-36V220Z" fill="url(#gSpec)" opacity="0.8"/>
+        <path d="M248 170h16v208h-16V170Z" fill="url(#gGold)" opacity="0.95"/>
+        <path d="M176 256c0-4 2-8 6-10l134-58c6-3 13 0 16 6 3 6 0 13-6 16L196 268c-7 3-14-2-20-12Z" fill="url(#gGold)" opacity="0.55"/>
+        <path d="M336 254c0-4-2-8-6-10L196 186c-6-3-13 0-16 6-3 6 0 13 6 16l130 58c7 3 14-2 20-12Z" fill="url(#gGold)" opacity="0.38"/>
+        <g transform="translate(320 300)">
+          <circle cx="0" cy="0" r="22" fill="#18C37E" opacity="0.95"/>
+          <path d="M-9 0l6 6 14-16" stroke="#0B2B1D" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" opacity="0.7"/>
+          <path d="M-9 0l6 6 14-16" stroke="#E8FFF5" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+        </g>
+        <g opacity="0.9" transform="translate(330 180)">
+          <circle cx="0" cy="0" r="8" fill="#E23A3A"/>
+          <circle cx="16" cy="8" r="6" fill="#D12F2F"/>
+          <circle cx="-12" cy="10" r="6" fill="#F04B4B"/>
+          <path d="M-6 -10c10 6 18 16 22 26" stroke="#18C37E" stroke-width="4" stroke-linecap="round" opacity="0.8"/>
+        </g>
+      </g>
+    </g>
+  </g>
+
+  <!-- Wordmark -->
+  <g filter="url(#fText)">
+    <text x="360" y="196" fill="url(#gText)" font-family="Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" font-weight="900" font-size="96" letter-spacing="1.5">HollyShip</text>
+    <text x="364" y="248" fill="#BFD7FF" opacity="0.85" font-family="Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" font-weight="700" font-size="22" letter-spacing="3">NEXT-GEN PACKAGE TRACKING</text>
+  </g>
+</svg>
