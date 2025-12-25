@@ -20,3 +20,4 @@
 ## UI/UX color refresh (cloud-inspired)
 - Primary: #4BA3FF; Accent: #8ED1FC; Dark text: #1F2A44; Light background: #F5F8FD.
 - Keep high contrast for text/icons; use accent for calls-to-action and status chips.
+- WCAG AA contrast checks: #1F2A44 on #F5F8FD (13.39:1) and on #8ED1FC (8.61:1) are compliant; #4BA3FF on #1F2A44 (5.42:1) works for inverse buttons; avoid #4BA3FF on #F5F8FD for body text.
