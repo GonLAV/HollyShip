@@ -3,14 +3,20 @@
 This plan maps the current prototype to a deployable, secure, and scalable setup so external users can access HollyShip reliably.
 
 ## Core Architecture
-- **Frontend**: React web app (Vite). Add PWA hardening (caching strategy, icons, offline shell) and WCAG AA checks. Optional: React Native shell for mobile parity.
-- **Backend API**: REST/GraphQL on Node.js (NestJS/Express) with validation (Zod/JOI), RBAC/ABAC middleware, and OpenAPI-first development (`docs/openapi.yaml`).
+- **Frontend**: React web app (Vite) with:
+  - PWA hardening (caching strategy, icons, offline shell)
+  - WCAG AA accessibility checks
+  - Optional React Native shell for mobile parity
+- **Backend API**: REST/GraphQL on Node.js (NestJS/Express) with:
+  - OpenAPI-first design (`docs/openapi.yaml`)
+  - Request validation (Zod/JOI)
+  - RBAC/ABAC authorization middleware
 - **Service boundaries** (can start as a modular monolith):
   - Ingestion (email/webhooks/manual), Carrier Resolver & Tracker, Notifications, User/Auth, Rewards/Offers.
   - Background jobs for carrier polling and email parsing.
 
 ## Data & Storage
-- **Primary DB**: PostgreSQL (managed: RDS/Cloud SQL). Enable automated backups, PITR, read replicas, PgBouncer/connection pooling.
+- **Primary DB**: PostgreSQL (managed: RDS/Cloud SQL). Enable automated backups, point-in-time recovery (PITR), read replicas, PgBouncer/connection pooling.
 - **Cache**: Redis (ElastiCache/Memorystore) for hot shipment lookups and rate limiting buckets.
 - **Object storage**: S3/Azure Blob/GCS for email attachments and exports; fronted by CDN (CloudFront/Azure CDN) for public assets.
 - **Analytics**: Ship events to BigQuery/Redshift/ClickHouse via stream (Kafka/Pub/Sub/Kinesis) for product analytics.
@@ -22,7 +28,7 @@ This plan maps the current prototype to a deployable, secure, and scalable setup
 - **Networking**: Private subnets for services/DB/cache; NAT for egress; security groups limiting DB/Redis to app only.
 
 ## Security
-- **AuthN/Z**: OAuth 2.0/OIDC (Auth0/Cognito/Azure AD). Short-lived JWTs, refresh tokens in httpOnly cookies. Role/tenant-aware guards on every route.
+- **Authentication/Authorization**: OAuth 2.0/OIDC (Auth0/Cognito/Azure AD). Short-lived JWTs, refresh tokens in httpOnly cookies. Role/tenant-aware guards on every route.
 - **Secrets**: KMS-backed secret store (SSM Parameter Store/Secret Manager/Key Vault). No secrets in code or images.
 - **Traffic protection**: TLS everywhere, WAF rules for OWASP top 10, DDoS shielding (Shield/Cloud Armor), IP allowlists for admin.
 - **Abuse controls**: Rate limiting + user-level throttles (Redis), request size limits, file scanning for uploads.
@@ -47,6 +53,6 @@ This plan maps the current prototype to a deployable, secure, and scalable setup
 - **Runbooks**: On-call playbooks for outage types (DB, queue backlog, auth outage), with dashboard links.
 
 ## Usability & Access Readiness
-- **Perf**: Core Web Vitals budgets, image/CDN optimization, API latency targets (<300ms p95 for common reads).
+- **Performance**: Core Web Vitals budgets, image/CDN optimization, API latency targets (<300ms p95 for common reads).
 - **Accessibility**: Maintain WCAG AA for color, focus, and keyboard navigation.
 - **Support**: Status page (Statuspage/UptimeRobot), in-app help links, and postman collection (`postman/HollyShip.postman_collection.json`) for external testers.
