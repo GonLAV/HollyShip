@@ -7,8 +7,9 @@ import { z } from 'zod';
 import { prisma } from './prisma.js';
 import type { Prisma } from '@prisma/client';
 import { tierForPoints } from './loyalty.js';
-import { guessCarrierFromTrackingNumber } from './carrierResolver.js';
-import { coordsForDestination, coordsForOrigin, interpolateLatLng, progressForStatus } from './geo.js';
+import { guessCarrierFromTrackingNumber, detectCarriers, probeCarriers } from './carrierResolver.js';
+import { aggregateCarriers } from './aggregator.js';
+import { coordsForDestination, coordsForOrigin, interpolateLatLng, progressForStatus, predictEtaDate } from './geo.js';
 import {
   createEmailCode,
   verifyEmailCode,
@@ -381,6 +382,9 @@ server.post('/v1/shipments/resolve', async (req, reply) => {
       carrierId = carrier.id;
     }
 
+    // Predict ETA at creation when possible
+    const predictedEta = predictEtaDate(originCoords, destCoords, carrierName, body.trackingNumber)
+
     const created = await tx.shipment.create({
       data: {
         userId: effectiveUserId,
@@ -397,6 +401,7 @@ server.post('/v1/shipments/resolve', async (req, reply) => {
         currentLat: originCoords.lat,
         currentLng: originCoords.lng,
         lastEventAt: now,
+        eta: predictedEta,
         orderNumberEncrypted:
           body.orderNumber && isCryptoConfigured() ? encryptField(body.orderNumber) : (body.orderNumber ?? null),
       },
@@ -447,6 +452,84 @@ server.post('/v1/shipments/resolve', async (req, reply) => {
     lastEventAt: shipment.lastEventAt?.toISOString() ?? null,
     createdAt: shipment.createdAt.toISOString(),
   });
+});
+
+server.get('/v1/carriers/detect', async (req, reply) => {
+  const querySchema = z.object({
+    trackingNumber: z.string().min(3),
+    limit: z.coerce.number().int().min(1).max(10).optional(),
+  });
+
+  const { trackingNumber, limit } = querySchema.parse(req.query);
+  const candidates = detectCarriers(trackingNumber, limit ?? 5);
+
+  return reply.send({
+    ok: true,
+    trackingNumber: trackingNumber.trim(),
+    candidates,
+  });
+});
+
+server.get('/v1/carriers/probe', async (req, reply) => {
+  const querySchema = z.object({
+    trackingNumber: z.string().min(3),
+    limit: z.coerce.number().int().min(1).max(10).optional(),
+  });
+
+  const { trackingNumber, limit } = querySchema.parse(req.query);
+  const candidates = probeCarriers(trackingNumber, limit ?? 5);
+
+  return reply.send({
+    ok: true,
+    trackingNumber: trackingNumber.trim(),
+    candidates,
+  });
+});
+// Per-carrier fallback probe: query aggregator with a carrier hint; fallback to local filtered by code
+server.get('/v1/carriers/:code/probe', async (req, reply) => {
+  const paramsSchema = z.object({ code: z.string().min(2).max(40) })
+  const querySchema = z.object({
+    trackingNumber: z.string().min(3),
+    limit: z.coerce.number().int().min(1).max(10).optional(),
+  })
+  const { code } = paramsSchema.parse(req.params)
+  const { trackingNumber, limit } = querySchema.parse(req.query)
+
+  const result = await aggregateCarriers(trackingNumber, limit ?? 5, code)
+  let candidates = result.candidates
+  // Local fallback filter: restrict to code match when using local
+  if (result.source === 'local') {
+    const lc = code.toLowerCase()
+    candidates = candidates.filter(c => (c.code || '').toLowerCase() === lc)
+  }
+  return reply.send({ ok: true, source: result.source, trackingNumber: trackingNumber.trim(), code, candidates })
+})
+
+// Per-carrier detect (regex-only) restricted filter
+server.get('/v1/carriers/:code/detect', async (req, reply) => {
+  const paramsSchema = z.object({ code: z.string().min(2).max(40) })
+  const querySchema = z.object({
+    trackingNumber: z.string().min(3),
+    limit: z.coerce.number().int().min(1).max(10).optional(),
+  })
+  const { code } = paramsSchema.parse(req.params)
+  const { trackingNumber, limit } = querySchema.parse(req.query)
+  const lc = code.toLowerCase()
+  const all = detectCarriers(trackingNumber, limit ?? 5)
+  const candidates = all.filter(c => (c.code || '').toLowerCase() === lc)
+  return reply.send({ ok: true, trackingNumber: trackingNumber.trim(), code, candidates })
+})
+
+// Optional external aggregator — falls back to local probe if not configured
+server.get('/v1/carriers/aggregate', async (req, reply) => {
+  const querySchema = z.object({
+    trackingNumber: z.string().min(3),
+    limit: z.coerce.number().int().min(1).max(10).optional(),
+  });
+
+  const { trackingNumber, limit } = querySchema.parse(req.query);
+  const result = await aggregateCarriers(trackingNumber, limit ?? 5);
+  return reply.send({ ok: result.ok, source: result.source, trackingNumber: trackingNumber.trim(), candidates: result.candidates });
 });
 
 server.get('/v1/shipments/:id/chain', async (req, reply) => {
