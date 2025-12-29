@@ -10,7 +10,7 @@ This plan maps the current prototype to a deployable, secure, and scalable setup
   - Background jobs for carrier polling and email parsing.
 
 ## Data & Storage
-- **Primary DB**: PostgreSQL (managed: RDS/Cloud SQL). Enable automated backups, PITR, read replicas, pgBouncer/connection pooling.
+- **Primary DB**: PostgreSQL (managed: RDS/Cloud SQL). Enable automated backups, PITR, read replicas, PgBouncer/connection pooling.
 - **Cache**: Redis (ElastiCache/Memorystore) for hot shipment lookups and rate limiting buckets.
 - **Object storage**: S3/Azure Blob/GCS for email attachments and exports; fronted by CDN (CloudFront/Azure CDN) for public assets.
 - **Analytics**: Ship events to BigQuery/Redshift/ClickHouse via stream (Kafka/Pub/Sub/Kinesis) for product analytics.
@@ -41,7 +41,7 @@ This plan maps the current prototype to a deployable, secure, and scalable setup
 - **Product analytics**: GA4/Amplitude/Mixpanel on web; privacy-friendly consent + sampling.
 
 ## CI/CD & Release
-- **Pipelines**: GitHub Actions → lint/test/build → Docker image → security scans (Snyk/trivy) → deploy to staging → smoke tests → prod.
+- **Pipelines**: GitHub Actions → lint/test/build → Docker image → security scans (Snyk/Trivy) → deploy to staging → smoke tests → prod.
 - **Deployment strategy**: Blue/Green or canary on the load balancer/Ingress; feature flags for risky changes.
 - **IaC**: Terraform/Bicep/CloudFormation to version infra (networking, DB, caches, queues, CDNs, WAF).
 - **Runbooks**: On-call playbooks for outage types (DB, queue backlog, auth outage), with dashboard links.
