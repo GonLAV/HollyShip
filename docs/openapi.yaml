@@ -1,0 +1,581 @@
+openapi: 3.0.3
+info:
+  title: HollyShip API
+  version: 0.1.0
+  description: |
+    Starter OpenAPI spec for the HollyShip MVP.
+servers:
+  - url: http://localhost:8080
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  service:
+                    type: string
+                  time:
+                    type: string
+                    format: date-time
+
+  /v1/stats/stream:
+    get:
+      summary: Stream realtime stats (SSE)
+      description: |
+        Server-Sent Events stream of live counters.
+        Response is `text/event-stream` with `data: {...}` messages.
+      responses:
+        '200':
+          description: SSE stream
+
+  /v1/shipments/resolve:
+    post:
+      summary: Resolve and create a shipment from tracking number
+      description: |
+        If authenticated with `Authorization: Bearer <token>`, the API enforces the user's monthly quota.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShipmentResolveRequest'
+      responses:
+        '200':
+          description: Shipment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Shipment'
+
+  /v1/me/export:
+    get:
+      summary: Export my account data
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Export payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  generatedAt:
+                    type: string
+                    format: date-time
+        '401':
+          description: Unauthorized
+
+  /v1/me:
+    delete:
+      summary: Delete my account (hard delete)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  deleted:
+                    type: boolean
+        '401':
+          description: Unauthorized
+
+  /v1/shipments/{id}:
+    get:
+      summary: Get shipment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Shipment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Shipment'
+        '404':
+          description: Not found
+    delete:
+      summary: Delete shipment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: boolean
+        '404':
+          description: Not found
+
+  /v1/shipments/{id}/refresh:
+    post:
+      summary: Force refresh shipment tracking (enqueue job)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accepted:
+                    type: boolean
+
+  /v1/shipments/{id}/simulate-status:
+    post:
+      summary: Simulate a status transition for a shipment (demo/testing)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  $ref: '#/components/schemas/CanonicalStatus'
+                userId:
+                  type: string
+                  format: uuid
+                  nullable: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  /v1/shipments:
+      /v1/shipments/{id}/chain:
+        get:
+          summary: Get tracking chain links for a shipment
+          parameters:
+            - name: id
+              in: path
+              required: true
+              schema:
+                type: string
+                format: uuid
+          responses:
+            '200':
+              description: Chain links
+              content:
+                application/json:
+                  schema:
+                    type: object
+                    properties:
+                      ok:
+                        type: boolean
+                      shipmentId:
+                        type: string
+                        format: uuid
+                      items:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            carrier:
+                              type: string
+                              nullable: true
+                            trackingNumber:
+                              type: string
+                            handoffIndex:
+                              type: integer
+                            isCurrent:
+                              type: boolean
+                            createdAt:
+                              type: string
+                              format: date-time
+            '404':
+              description: Not found
+    get:
+      summary: List shipments
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 30
+        - name: userId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Shipment list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Shipment'
+
+  /v1/users/{id}/loyalty:
+    get:
+      summary: Get user loyalty balance and tier
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Loyalty info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoyaltyInfo'
+
+  /v1/loyalty/redeem:
+    post:
+      summary: Redeem a coupon (stub)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoyaltyRedeemRequest'
+      responses:
+        '200':
+          description: Redemption result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  redeemed:
+                    type: boolean
+
+  /v1/connect/email/gmail:
+    post:
+      summary: Start Gmail OAuth (stub)
+      responses:
+        '200':
+          description: OK
+
+  /v1/connect/email/outlook:
+    post:
+      summary: Start Outlook OAuth (stub)
+      responses:
+        '200':
+          description: OK
+
+  /v1/auth/email/start:
+    post:
+      summary: Start email magic-link flow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthEmailStartRequest'
+      responses:
+        '200':
+          description: Verification code generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthEmailStartResponse'
+
+  /v1/auth/email/verify:
+    post:
+      summary: Verify email code and create/authenticate user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthEmailVerifyRequest'
+      responses:
+        '200':
+          description: Authenticated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthEmailVerifyResponse'
+
+  /v1/auth/oauth:
+    post:
+      summary: Simulated OAuth login (Google + Apple)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthOAuthRequest'
+      responses:
+        '200':
+          description: OAuth-authenticated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthOAuthResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+  schemas:
+    CanonicalStatus:
+      type: string
+      enum:
+        - CREATED
+        - IN_TRANSIT
+        - OUT_FOR_DELIVERY
+        - DELIVERED
+        - DELAYED
+        - ACTION_REQUIRED
+        - FAILURE
+
+    ShipmentResolveRequest:
+      type: object
+      required:
+        - trackingNumber
+      properties:
+        label:
+          type: string
+          nullable: true
+          example: iPhone 15 Pro
+        trackingNumber:
+          type: string
+          example: 1Z999AA10123456784
+        hintCarrier:
+          type: string
+          nullable: true
+          example: UPS
+        destination:
+          type: string
+          nullable: true
+          example: New York, NY
+        userId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Optional user performing this action
+        orderNumber:
+          type: string
+          nullable: true
+          description: Optional order number (stored encrypted if AES_SECRET configured)
+
+    Shipment:
+      type: object
+      required:
+        - id
+        - trackingNumber
+        - status
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        label:
+          type: string
+          nullable: true
+        trackingNumber:
+          type: string
+        carrier:
+          type: string
+          nullable: true
+        status:
+          $ref: '#/components/schemas/CanonicalStatus'
+        userId:
+          type: string
+          format: uuid
+          nullable: true
+        eta:
+          type: string
+          format: date-time
+          nullable: true
+        origin:
+          type: string
+          nullable: true
+        destination:
+          type: string
+          nullable: true
+        lastEventAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    LoyaltyInfo:
+      type: object
+      required:
+        - userId
+        - points
+        - tier
+      properties:
+        userId:
+          type: string
+          format: uuid
+        points:
+          type: integer
+          format: int32
+        tier:
+          type: string
+          enum: [Bronze, Silver, Gold]
+
+    LoyaltyRedeemRequest:
+      type: object
+      required:
+        - couponId
+      properties:
+        couponId:
+          type: string
+          format: uuid
+
+    AuthEmailStartRequest:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+
+    AuthEmailStartResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        code:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+
+    AuthEmailVerifyRequest:
+      type: object
+      required:
+        - email
+        - code
+      properties:
+        email:
+          type: string
+          format: email
+        code:
+          type: string
+          example: '123456'
+
+    AuthEmailVerifyResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        userId:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        token:
+          type: string
+          description: Bearer token for authenticated requests
+        expiresAt:
+          type: string
+          format: date-time
+
+    AuthOAuthRequest:
+      type: object
+      required:
+        - provider
+        - providerId
+      properties:
+        provider:
+          type: string
+          enum:
+            - google
+            - apple
+        providerId:
+          type: string
+        email:
+          type: string
+          format: email
+          nullable: true
+
+    AuthOAuthResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        userId:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+          nullable: true
+        provider:
+          type: string
+          enum:
+            - google
+            - apple
+        token:
+          type: string
+          description: Bearer token for authenticated requests
+        expiresAt:
+          type: string
+          format: date-time
