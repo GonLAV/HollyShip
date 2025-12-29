@@ -24,3 +24,7 @@
 
 ## Architecture & infrastructure for public access
 - See [`docs/ARCHITECTURE_INFRA.md`](docs/ARCHITECTURE_INFRA.md) for the deployment-ready plan covering frontend/backend, data, hosting, security, scalability, monitoring, and CI/CD.
+
+## Build & run (local)
+- Frontend: `npm install && npm run dev` (or `npm run build && npm run preview`) from repo root.
+- Backend: `cd Hollybackend && npm install && npm run dev` (requires env + database per `Hollybackend/.env.example` if present).
