@@ -1,0 +1,175 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CanonicalStatus {
+  CREATED
+  IN_TRANSIT
+  OUT_FOR_DELIVERY
+  DELIVERED
+  DELAYED
+  ACTION_REQUIRED
+  FAILURE
+}
+
+enum PlanTier {
+  free
+  starter
+  professional
+  business
+  enterprise
+}
+
+model User {
+  id         String   @id @default(uuid())
+  email      String?  @unique
+  plan       PlanTier @default(free)
+  quotaMonth Int      @default(20)
+  locale     String?
+  tz         String?
+  createdAt  DateTime @default(now())
+
+  orders         Order[]
+  loyaltyEntries LoyaltyLedger[]
+  shipments      Shipment[]
+  usageMeters    UsageMeter[]
+}
+
+model UsageMeter {
+  id               BigInt   @id @default(autoincrement())
+  userId           String
+  periodStart      DateTime @db.Date
+  shipmentsTracked Int      @default(0)
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, periodStart])
+  @@index([userId])
+}
+
+model Carrier {
+  id        String @id @default(uuid())
+  code      String @unique
+  name      String
+  apiSource String
+
+  shipments      Shipment[]
+  trackingChains TrackingChain[]
+}
+
+model Order {
+  id           String   @id @default(uuid())
+  userId       String
+  merchantName String?
+  orderNumber  String?
+  currency     String?
+  totalAmount  Decimal?
+  source       String
+  createdAt    DateTime @default(now())
+
+  user      User       @relation(fields: [userId], references: [id])
+  shipments Shipment[]
+}
+
+model Shipment {
+  id             String          @id @default(uuid())
+  orderId        String?
+  carrierId      String?
+  userId         String?
+  label          String?
+  trackingNumber String
+  status         CanonicalStatus @default(CREATED)
+  eta            DateTime?
+  origin         String?
+  originLat      Float?
+  originLng      Float?
+  destination    String?
+  destinationLat Float?
+  destinationLng Float?
+  currentLat     Float?
+  currentLng     Float?
+  lastEventAt    DateTime?
+  createdAt      DateTime        @default(now())
+
+  order                Order?          @relation(fields: [orderId], references: [id])
+  carrier              Carrier?        @relation(fields: [carrierId], references: [id])
+  user                 User?           @relation(fields: [userId], references: [id])
+  events               TrackingEvent[]
+  chainLinks           TrackingChain[]
+  loyalty              LoyaltyLedger[]
+  orderNumberEncrypted String?
+
+  @@index([trackingNumber])
+  @@index([userId])
+}
+
+model TrackingChain {
+  id             BigInt   @id @default(autoincrement())
+  shipmentId     String
+  carrierId      String?
+  trackingNumber String
+  handoffIndex   Int
+  isCurrent      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  shipment Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  carrier  Carrier? @relation(fields: [carrierId], references: [id])
+
+  @@unique([shipmentId, carrierId, trackingNumber])
+  @@index([shipmentId])
+  @@index([shipmentId, isCurrent])
+}
+
+model StatsRollup {
+  ts                 DateTime @id
+  shipmentsPerMinute Int
+  shipmentsPerHour   Int
+  shipmentsToday     Int
+  shipmentsWeek      Int
+  mau                Int
+}
+
+model TrackingEvent {
+  id              BigInt          @id @default(autoincrement())
+  shipmentId      String
+  carrierStatus   String?
+  canonicalStatus CanonicalStatus
+  location        String?
+  eventTime       DateTime
+  payload         Json?
+
+  shipment Shipment @relation(fields: [shipmentId], references: [id])
+
+  @@index([shipmentId])
+}
+
+model LoyaltyLedger {
+  id         BigInt   @id @default(autoincrement())
+  userId     String
+  shipmentId String
+  points     Int
+  reason     String
+  createdAt  DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id])
+  shipment Shipment @relation(fields: [shipmentId], references: [id])
+
+  @@unique([userId, shipmentId, reason])
+  @@index([userId])
+}
+
+model Coupon {
+  id          String    @id @default(uuid())
+  partnerCode String
+  couponCode  String    @unique
+  pointsCost  Int
+  expiresAt   DateTime?
+  metadata    Json?
+  redeemedBy  String?
+  redeemedAt  DateTime?
+}

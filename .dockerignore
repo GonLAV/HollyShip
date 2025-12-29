@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+dist
+**/dist
+build
+**/build
+.git
+**/.git
+.prisma
+**/.prisma
+.vscode
+**/.vscode
+.DS_Store
+**/.DS_Store
