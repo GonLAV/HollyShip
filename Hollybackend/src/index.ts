@@ -22,6 +22,14 @@ import {
 } from './auth.js';
 import { decryptField, encryptField, isCryptoConfigured } from './cryptoUtils.js';
 import { startPollingJob, getJobStatus } from './jobs.js';
+import {
+  getGmailAuthUrl,
+  getOutlookAuthUrl,
+  exchangeGmailCode,
+  exchangeOutlookCode,
+  setupGmailWatch,
+  setupOutlookSubscription,
+} from './emailIngestion.js';
 
 const PORT = Number(process.env.PORT || 8080);
 
@@ -755,12 +763,110 @@ server.post('/v1/loyalty/redeem', async (req, reply) => {
   return reply.send({ redeemed: false });
 });
 
-server.post('/v1/connect/email/gmail', async () => {
-  return { ok: true, provider: 'gmail', message: 'OAuth flow not implemented in MVP scaffold' };
+server.post('/v1/connect/email/gmail', async (req, reply) => {
+  const authUserId = getAuthUserId(req);
+  
+  try {
+    // Generate state parameter for CSRF protection
+    const state = authUserId || 'anonymous';
+    const authUrl = getGmailAuthUrl(state);
+    
+    return reply.send({
+      ok: true,
+      provider: 'gmail',
+      authUrl,
+      message: 'Redirect user to authUrl to complete OAuth flow',
+    });
+  } catch (error: any) {
+    return reply.code(500).send({
+      ok: false,
+      provider: 'gmail',
+      error: error.message || 'Gmail OAuth not configured',
+    });
+  }
 });
 
-server.post('/v1/connect/email/outlook', async () => {
-  return { ok: true, provider: 'outlook', message: 'OAuth flow not implemented in MVP scaffold' };
+server.get('/v1/connect/email/gmail/callback', async (req, reply) => {
+  const querySchema = z.object({
+    code: z.string().min(1),
+    state: z.string().optional(),
+  });
+
+  try {
+    const { code, state } = querySchema.parse(req.query);
+    const tokens = await exchangeGmailCode(code);
+    
+    // In production, we would:
+    // 1. Store tokens securely in database
+    // 2. Set up Gmail watch/webhook
+    // 3. Start fetching and parsing emails
+    
+    return reply.send({
+      ok: true,
+      provider: 'gmail',
+      message: 'Gmail connected successfully (stub)',
+      expiresAt: tokens.expiresAt.toISOString(),
+    });
+  } catch (error: any) {
+    return reply.code(400).send({
+      ok: false,
+      provider: 'gmail',
+      error: error.message || 'Invalid authorization code',
+    });
+  }
+});
+
+server.post('/v1/connect/email/outlook', async (req, reply) => {
+  const authUserId = getAuthUserId(req);
+  
+  try {
+    // Generate state parameter for CSRF protection
+    const state = authUserId || 'anonymous';
+    const authUrl = getOutlookAuthUrl(state);
+    
+    return reply.send({
+      ok: true,
+      provider: 'outlook',
+      authUrl,
+      message: 'Redirect user to authUrl to complete OAuth flow',
+    });
+  } catch (error: any) {
+    return reply.code(500).send({
+      ok: false,
+      provider: 'outlook',
+      error: error.message || 'Outlook OAuth not configured',
+    });
+  }
+});
+
+server.get('/v1/connect/email/outlook/callback', async (req, reply) => {
+  const querySchema = z.object({
+    code: z.string().min(1),
+    state: z.string().optional(),
+  });
+
+  try {
+    const { code, state } = querySchema.parse(req.query);
+    const tokens = await exchangeOutlookCode(code);
+    
+    // In production, we would:
+    // 1. Store tokens securely in database
+    // 2. Set up Outlook subscription/webhook
+    // 3. Start fetching and parsing emails
+    
+    return reply.send({
+      ok: true,
+      provider: 'outlook',
+      message: 'Outlook connected successfully (stub)',
+      expiresAt: tokens.expiresAt.toISOString(),
+    });
+  } catch (error: any) {
+    return reply.code(400).send({
+      ok: false,
+      provider: 'outlook',
+      error: error.message || 'Invalid authorization code',
+    });
+  }
 });
 
 // Demo endpoint to simulate a status transition + points accrual.
