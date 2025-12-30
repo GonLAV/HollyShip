@@ -10,6 +10,7 @@ import { tierForPoints } from './loyalty.js';
 import { guessCarrierFromTrackingNumber, detectCarriers, probeCarriers } from './carrierResolver.js';
 import { aggregateCarriers } from './aggregator.js';
 import { coordsForDestination, coordsForOrigin, interpolateLatLng, progressForStatus, predictEtaDate } from './geo.js';
+import { allowRequest, keyFromReq } from './rateLimit.js';
 import {
   createEmailCode,
   verifyEmailCode,
@@ -455,6 +456,9 @@ server.post('/v1/shipments/resolve', async (req, reply) => {
 });
 
 server.get('/v1/carriers/detect', async (req, reply) => {
+  if (!allowRequest(keyFromReq(req, 'rl:detect'), 120, 2)) {
+    return reply.code(429).send({ ok: false, error: 'Too many requests' });
+  }
   const querySchema = z.object({
     trackingNumber: z.string().min(3),
     limit: z.coerce.number().int().min(1).max(10).optional(),
@@ -471,6 +475,9 @@ server.get('/v1/carriers/detect', async (req, reply) => {
 });
 
 server.get('/v1/carriers/probe', async (req, reply) => {
+  if (!allowRequest(keyFromReq(req, 'rl:probe'), 90, 1)) {
+    return reply.code(429).send({ ok: false, error: 'Too many requests' });
+  }
   const querySchema = z.object({
     trackingNumber: z.string().min(3),
     limit: z.coerce.number().int().min(1).max(10).optional(),
@@ -487,6 +494,9 @@ server.get('/v1/carriers/probe', async (req, reply) => {
 });
 // Per-carrier fallback probe: query aggregator with a carrier hint; fallback to local filtered by code
 server.get('/v1/carriers/:code/probe', async (req, reply) => {
+  if (!allowRequest(keyFromReq(req, 'rl:probe:code'), 60, 1)) {
+    return reply.code(429).send({ ok: false, error: 'Too many requests' });
+  }
   const paramsSchema = z.object({ code: z.string().min(2).max(40) })
   const querySchema = z.object({
     trackingNumber: z.string().min(3),
@@ -507,6 +517,9 @@ server.get('/v1/carriers/:code/probe', async (req, reply) => {
 
 // Per-carrier detect (regex-only) restricted filter
 server.get('/v1/carriers/:code/detect', async (req, reply) => {
+  if (!allowRequest(keyFromReq(req, 'rl:detect:code'), 120, 2)) {
+    return reply.code(429).send({ ok: false, error: 'Too many requests' });
+  }
   const paramsSchema = z.object({ code: z.string().min(2).max(40) })
   const querySchema = z.object({
     trackingNumber: z.string().min(3),
@@ -522,6 +535,9 @@ server.get('/v1/carriers/:code/detect', async (req, reply) => {
 
 // Optional external aggregator — falls back to local probe if not configured
 server.get('/v1/carriers/aggregate', async (req, reply) => {
+  if (!allowRequest(keyFromReq(req, 'rl:aggregate'), 60, 1)) {
+    return reply.code(429).send({ ok: false, error: 'Too many requests' });
+  }
   const querySchema = z.object({
     trackingNumber: z.string().min(3),
     limit: z.coerce.number().int().min(1).max(10).optional(),
