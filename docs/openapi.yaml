@@ -370,12 +370,93 @@ paths:
               schema:
                 $ref: '#/components/schemas/AuthOAuthResponse'
 
+  /v1/webhooks/tracking:
+    post:
+      summary: Webhook receiver for tracking updates from external providers
+      description: |
+        Receives tracking updates from external providers (AfterShip, 17TRACK, EasyPost, Shippo, etc.)
+        Validates webhook signature if WEBHOOK_SECRET is configured.
+      security:
+        - webhookSignature: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - trackingNumber
+                - status
+              properties:
+                trackingNumber:
+                  type: string
+                  example: "1Z999AA10123456784"
+                carrier:
+                  type: string
+                  example: "UPS"
+                status:
+                  type: string
+                  example: "in_transit"
+                location:
+                  type: string
+                  example: "Memphis, TN"
+                timestamp:
+                  type: string
+                  format: date-time
+                metadata:
+                  type: object
+      responses:
+        '200':
+          description: Webhook processed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  status:
+                    $ref: '#/components/schemas/CanonicalStatus'
+        '401':
+          description: Invalid webhook signature
+        '404':
+          description: Shipment not found
+
+  /v1/jobs/status:
+    get:
+      summary: Get status of background jobs
+      description: Returns the status of polling jobs and other background tasks
+      responses:
+        '200':
+          description: Job status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  jobs:
+                    type: object
+                    properties:
+                      polling:
+                        type: object
+                        properties:
+                          isRunning:
+                            type: boolean
+                          pollIntervalMs:
+                            type: integer
+
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: opaque
+    webhookSignature:
+      type: apiKey
+      in: header
+      name: x-webhook-signature
   schemas:
     CanonicalStatus:
       type: string

@@ -21,6 +21,22 @@ import {
   revokeSessionsForUser,
 } from './auth.js';
 import { decryptField, encryptField, isCryptoConfigured } from './cryptoUtils.js';
+import { startPollingJob, getJobStatus } from './jobs.js';
+import {
+  getGmailAuthUrl,
+  getOutlookAuthUrl,
+  exchangeGmailCode,
+  exchangeOutlookCode,
+  setupGmailWatch,
+  setupOutlookSubscription,
+} from './emailIngestion.js';
+import {
+  extractFromShopify,
+  extractFromWooCommerce,
+  validateShopifyWebhook,
+  validateWooCommerceWebhook,
+  detectPlatform,
+} from './ecommerce.js';
 
 const PORT = Number(process.env.PORT || 8080);
 
@@ -77,6 +93,22 @@ function monthStartUtc(now: Date) {
 
 function truncateToMinuteUtc(now: Date) {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), now.getUTCHours(), now.getUTCMinutes(), 0, 0));
+}
+
+async function checkDailyAccrualCap(userId: string, pointsToAdd: number): Promise<boolean> {
+  const dailyCap = Number(process.env.DAILY_POINTS_CAP || 500);
+  const today = startOfDayUtc(new Date());
+  
+  const dailyTotal = await prisma.loyaltyLedger.aggregate({
+    where: {
+      userId,
+      createdAt: { gte: today },
+    },
+    _sum: { points: true },
+  });
+
+  const currentPoints = dailyTotal._sum.points ?? 0;
+  return (currentPoints + pointsToAdd) <= dailyCap;
 }
 
 async function computeStatsSnapshot() {
@@ -213,6 +245,16 @@ await server.register(swaggerUi, {
 
 server.get('/health', async () => {
   return { ok: true, service: 'hollyship-backend', time: new Date().toISOString() };
+});
+
+server.get('/v1/jobs/status', async () => {
+  const status = getJobStatus();
+  return {
+    ok: true,
+    jobs: {
+      polling: status,
+    },
+  };
 });
 
 server.get('/v1/stats/stream', async (req, reply) => {
@@ -728,12 +770,110 @@ server.post('/v1/loyalty/redeem', async (req, reply) => {
   return reply.send({ redeemed: false });
 });
 
-server.post('/v1/connect/email/gmail', async () => {
-  return { ok: true, provider: 'gmail', message: 'OAuth flow not implemented in MVP scaffold' };
+server.post('/v1/connect/email/gmail', async (req, reply) => {
+  const authUserId = getAuthUserId(req);
+  
+  try {
+    // Generate state parameter for CSRF protection
+    const state = authUserId || 'anonymous';
+    const authUrl = getGmailAuthUrl(state);
+    
+    return reply.send({
+      ok: true,
+      provider: 'gmail',
+      authUrl,
+      message: 'Redirect user to authUrl to complete OAuth flow',
+    });
+  } catch (error: any) {
+    return reply.code(500).send({
+      ok: false,
+      provider: 'gmail',
+      error: error.message || 'Gmail OAuth not configured',
+    });
+  }
 });
 
-server.post('/v1/connect/email/outlook', async () => {
-  return { ok: true, provider: 'outlook', message: 'OAuth flow not implemented in MVP scaffold' };
+server.get('/v1/connect/email/gmail/callback', async (req, reply) => {
+  const querySchema = z.object({
+    code: z.string().min(1),
+    state: z.string().optional(),
+  });
+
+  try {
+    const { code, state } = querySchema.parse(req.query);
+    const tokens = await exchangeGmailCode(code);
+    
+    // In production, we would:
+    // 1. Store tokens securely in database
+    // 2. Set up Gmail watch/webhook
+    // 3. Start fetching and parsing emails
+    
+    return reply.send({
+      ok: true,
+      provider: 'gmail',
+      message: 'Gmail connected successfully (stub)',
+      expiresAt: tokens.expiresAt.toISOString(),
+    });
+  } catch (error: any) {
+    return reply.code(400).send({
+      ok: false,
+      provider: 'gmail',
+      error: error.message || 'Invalid authorization code',
+    });
+  }
+});
+
+server.post('/v1/connect/email/outlook', async (req, reply) => {
+  const authUserId = getAuthUserId(req);
+  
+  try {
+    // Generate state parameter for CSRF protection
+    const state = authUserId || 'anonymous';
+    const authUrl = getOutlookAuthUrl(state);
+    
+    return reply.send({
+      ok: true,
+      provider: 'outlook',
+      authUrl,
+      message: 'Redirect user to authUrl to complete OAuth flow',
+    });
+  } catch (error: any) {
+    return reply.code(500).send({
+      ok: false,
+      provider: 'outlook',
+      error: error.message || 'Outlook OAuth not configured',
+    });
+  }
+});
+
+server.get('/v1/connect/email/outlook/callback', async (req, reply) => {
+  const querySchema = z.object({
+    code: z.string().min(1),
+    state: z.string().optional(),
+  });
+
+  try {
+    const { code, state } = querySchema.parse(req.query);
+    const tokens = await exchangeOutlookCode(code);
+    
+    // In production, we would:
+    // 1. Store tokens securely in database
+    // 2. Set up Outlook subscription/webhook
+    // 3. Start fetching and parsing emails
+    
+    return reply.send({
+      ok: true,
+      provider: 'outlook',
+      message: 'Outlook connected successfully (stub)',
+      expiresAt: tokens.expiresAt.toISOString(),
+    });
+  } catch (error: any) {
+    return reply.code(400).send({
+      ok: false,
+      provider: 'outlook',
+      error: error.message || 'Invalid authorization code',
+    });
+  }
 });
 
 // Demo endpoint to simulate a status transition + points accrual.
@@ -843,20 +983,301 @@ server.post('/v1/shipments/:id/simulate-status', async (req, reply) => {
       update: {},
     });
 
-    await prisma.loyaltyLedger.upsert({
-      where: {
-        userId_shipmentId_reason: {
-          userId: effectiveUserId,
-          shipmentId: shipment.id,
-          reason,
+    // Check daily accrual cap before awarding points
+    const canAccrue = await checkDailyAccrualCap(effectiveUserId, points);
+    if (canAccrue) {
+      await prisma.loyaltyLedger.upsert({
+        where: {
+          userId_shipmentId_reason: {
+            userId: effectiveUserId,
+            shipmentId: shipment.id,
+            reason,
+          },
         },
-      },
-      create: { userId: effectiveUserId, shipmentId: shipment.id, reason, points },
-      update: {},
-    });
+        create: { userId: effectiveUserId, shipmentId: shipment.id, reason, points },
+        update: {},
+      });
+    }
   }
 
   return reply.send({ ok: true });
+});
+
+// Webhook receiver for tracking updates from external providers
+// Supports generic payload format from aggregators like AfterShip, 17TRACK, EasyPost, Shippo
+server.post('/v1/webhooks/tracking', async (req, reply) => {
+  // Validate webhook signature if configured
+  const webhookSecret = process.env.WEBHOOK_SECRET;
+  if (webhookSecret) {
+    const signature = req.headers['x-webhook-signature'];
+    // Use timing-safe comparison to prevent timing attacks
+    if (!signature || typeof signature !== 'string') {
+      return reply.code(401).send({ ok: false, error: 'Invalid signature' });
+    }
+    
+    // Import crypto for timing-safe comparison
+    const crypto = await import('crypto');
+    const expectedBuffer = Buffer.from(webhookSecret);
+    const actualBuffer = Buffer.from(signature);
+    
+    // Ensure same length to prevent timing attacks
+    if (expectedBuffer.length !== actualBuffer.length) {
+      return reply.code(401).send({ ok: false, error: 'Invalid signature' });
+    }
+    
+    if (!crypto.timingSafeEqual(expectedBuffer, actualBuffer)) {
+      return reply.code(401).send({ ok: false, error: 'Invalid signature' });
+    }
+  }
+
+  const bodySchema = z.object({
+    trackingNumber: z.string().min(3),
+    carrier: z.string().optional(),
+    status: z.string(),
+    location: z.string().optional(),
+    timestamp: z.string().optional(),
+    metadata: z.unknown().optional(),
+  });
+
+  const body = bodySchema.parse(req.body);
+  
+  // Find shipment by tracking number
+  const shipment = await prisma.shipment.findFirst({
+    where: { trackingNumber: body.trackingNumber },
+    include: { carrier: true },
+  });
+
+  if (!shipment) {
+    return reply.code(404).send({ ok: false, error: 'Shipment not found' });
+  }
+
+  // Map carrier status to canonical status
+  const statusMapping: Record<string, CanonicalStatus> = {
+    'created': 'CREATED',
+    'pending': 'CREATED',
+    'in_transit': 'IN_TRANSIT',
+    'transit': 'IN_TRANSIT',
+    'out_for_delivery': 'OUT_FOR_DELIVERY',
+    'delivered': 'DELIVERED',
+    'delayed': 'DELAYED',
+    'exception': 'ACTION_REQUIRED',
+    'failed': 'FAILURE',
+    'failure': 'FAILURE',
+  };
+
+  const normalizedStatus = body.status.toLowerCase().replace(/[\s-]/g, '_');
+  const canonicalStatus = statusMapping[normalizedStatus] || 'CREATED';
+  
+  // Validate and parse timestamp to prevent Invalid Date
+  let eventTime = new Date();
+  if (body.timestamp) {
+    const parsedTime = new Date(body.timestamp);
+    if (!isNaN(parsedTime.getTime())) {
+      eventTime = parsedTime;
+    }
+  }
+
+  // Update shipment and create event
+  await prisma.$transaction(async (tx) => {
+    await tx.shipment.update({
+      where: { id: shipment.id },
+      data: {
+        status: canonicalStatus,
+        lastEventAt: eventTime,
+      },
+    });
+
+    await tx.trackingEvent.create({
+      data: {
+        shipmentId: shipment.id,
+        canonicalStatus,
+        carrierStatus: body.status,
+        location: body.location ?? null,
+        eventTime,
+        payload: body.metadata as any,
+      },
+    });
+
+    // Award loyalty points if applicable (with daily cap check)
+    if (shipment.userId && (canonicalStatus === 'IN_TRANSIT' || canonicalStatus === 'DELIVERED')) {
+      const points = canonicalStatus === 'IN_TRANSIT' ? 25 : 50;
+      const reason = canonicalStatus;
+
+      // Check daily cap before awarding
+      const canAccrue = await checkDailyAccrualCap(shipment.userId, points);
+      if (canAccrue) {
+        await tx.loyaltyLedger.upsert({
+          where: {
+            userId_shipmentId_reason: {
+              userId: shipment.userId,
+              shipmentId: shipment.id,
+              reason,
+            },
+          },
+          create: { userId: shipment.userId, shipmentId: shipment.id, reason, points },
+          update: {},
+        });
+      }
+    }
+  });
+
+  return reply.send({ ok: true, status: canonicalStatus });
+});
+
+// Shopify webhook receiver
+server.post('/v1/webhooks/shopify/orders', async (req, reply) => {
+  const shopifySecret = process.env.SHOPIFY_WEBHOOK_SECRET;
+  
+  // Validate webhook signature
+  if (shopifySecret) {
+    const hmac = req.headers['x-shopify-hmac-sha256'];
+    if (!hmac || typeof hmac !== 'string') {
+      return reply.code(401).send({ ok: false, error: 'Missing signature' });
+    }
+
+    const rawBody = JSON.stringify(req.body);
+    if (!validateShopifyWebhook(rawBody, hmac, shopifySecret)) {
+      return reply.code(401).send({ ok: false, error: 'Invalid signature' });
+    }
+  }
+
+  try {
+    const shipments = extractFromShopify(req.body);
+    
+    if (shipments.length === 0) {
+      return reply.send({ ok: true, message: 'No tracking information found', created: 0 });
+    }
+
+    const created = [];
+    for (const shipmentData of shipments) {
+      // Find or create user by email
+      let userId: string | null = null;
+      if (shipmentData.userEmail) {
+        const user = await ensureUserByEmail(shipmentData.userEmail);
+        userId = user.id;
+      }
+
+      // Create shipment
+      const guessed = guessCarrierFromTrackingNumber(shipmentData.trackingNumber);
+      const carrierName = shipmentData.carrier || guessed?.name || null;
+      
+      let carrierId: string | null = null;
+      if (carrierName) {
+        const carrier = await prisma.carrier.upsert({
+          where: { code: carrierName.toLowerCase().replace(/\s+/g, '_') },
+          create: { code: carrierName.toLowerCase().replace(/\s+/g, '_'), name: carrierName, apiSource: 'shopify' },
+          update: { name: carrierName },
+        });
+        carrierId = carrier.id;
+      }
+
+      const shipment = await prisma.shipment.create({
+        data: {
+          userId,
+          label: shipmentData.items?.[0]?.name || shipmentData.orderNumber,
+          trackingNumber: shipmentData.trackingNumber,
+          carrierId,
+          status: 'CREATED',
+          lastEventAt: new Date(),
+        },
+      });
+
+      await prisma.trackingEvent.create({
+        data: {
+          shipmentId: shipment.id,
+          canonicalStatus: 'CREATED',
+          eventTime: new Date(),
+          carrierStatus: null,
+          location: null,
+        },
+      });
+
+      created.push(shipment.id);
+    }
+
+    return reply.send({ ok: true, created: created.length, shipmentIds: created });
+  } catch (error: any) {
+    console.error('[Shopify] Webhook processing error:', error);
+    return reply.code(400).send({ ok: false, error: error.message || 'Invalid payload' });
+  }
+});
+
+// WooCommerce webhook receiver
+server.post('/v1/webhooks/woocommerce/orders', async (req, reply) => {
+  const wooSecret = process.env.WOOCOMMERCE_WEBHOOK_SECRET;
+  
+  // Validate webhook signature
+  if (wooSecret) {
+    const signature = req.headers['x-wc-webhook-signature'];
+    if (!signature || typeof signature !== 'string') {
+      return reply.code(401).send({ ok: false, error: 'Missing signature' });
+    }
+
+    const rawBody = JSON.stringify(req.body);
+    if (!validateWooCommerceWebhook(rawBody, signature, wooSecret)) {
+      return reply.code(401).send({ ok: false, error: 'Invalid signature' });
+    }
+  }
+
+  try {
+    const shipments = extractFromWooCommerce(req.body);
+    
+    if (shipments.length === 0) {
+      return reply.send({ ok: true, message: 'No tracking information found', created: 0 });
+    }
+
+    const created = [];
+    for (const shipmentData of shipments) {
+      // Find or create user by email
+      let userId: string | null = null;
+      if (shipmentData.userEmail) {
+        const user = await ensureUserByEmail(shipmentData.userEmail);
+        userId = user.id;
+      }
+
+      // Create shipment
+      const guessed = guessCarrierFromTrackingNumber(shipmentData.trackingNumber);
+      const carrierName = shipmentData.carrier || guessed?.name || null;
+      
+      let carrierId: string | null = null;
+      if (carrierName) {
+        const carrier = await prisma.carrier.upsert({
+          where: { code: carrierName.toLowerCase().replace(/\s+/g, '_') },
+          create: { code: carrierName.toLowerCase().replace(/\s+/g, '_'), name: carrierName, apiSource: 'woocommerce' },
+          update: { name: carrierName },
+        });
+        carrierId = carrier.id;
+      }
+
+      const shipment = await prisma.shipment.create({
+        data: {
+          userId,
+          label: shipmentData.items?.[0]?.name || shipmentData.orderNumber,
+          trackingNumber: shipmentData.trackingNumber,
+          carrierId,
+          status: 'CREATED',
+          lastEventAt: new Date(),
+        },
+      });
+
+      await prisma.trackingEvent.create({
+        data: {
+          shipmentId: shipment.id,
+          canonicalStatus: 'CREATED',
+          eventTime: new Date(),
+          carrierStatus: null,
+          location: null,
+        },
+      });
+
+      created.push(shipment.id);
+    }
+
+    return reply.send({ ok: true, created: created.length, shipmentIds: created });
+  } catch (error: any) {
+    console.error('[WooCommerce] Webhook processing error:', error);
+    return reply.code(400).send({ ok: false, error: error.message || 'Invalid payload' });
+  }
 });
 
 // Persist stats rollups every minute (best-effort)
@@ -887,6 +1308,80 @@ setInterval(async () => {
     // ignore
   }
 }, 60_000);
+
+// Consent management endpoints
+
+// Get user's consent status for all types
+server.get('/v1/me/consents', async (req, reply) => {
+  const userId = requireAuthUserId(req, reply);
+  if (!userId) return;
+
+  const consents = await prisma.consent.findMany({
+    where: { userId },
+    orderBy: { consentType: 'asc' },
+  });
+
+  return reply.send({
+    ok: true,
+    consents: consents.map(c => ({
+      type: c.consentType,
+      granted: c.granted,
+      grantedAt: c.grantedAt?.toISOString() ?? null,
+      revokedAt: c.revokedAt?.toISOString() ?? null,
+    })),
+  });
+});
+
+// Grant or revoke consent
+server.post('/v1/me/consents', async (req, reply) => {
+  const userId = requireAuthUserId(req, reply);
+  if (!userId) return;
+
+  const bodySchema = z.object({
+    consentType: z.enum(['email_scanning', 'data_processing', 'marketing']),
+    granted: z.boolean(),
+  });
+
+  const { consentType, granted } = bodySchema.parse(req.body);
+
+  // Extract IP and user agent for audit trail
+  const ipAddress = req.headers['x-forwarded-for'] || req.ip || null;
+  const userAgent = req.headers['user-agent'] || null;
+
+  const now = new Date();
+
+  const consent = await prisma.consent.upsert({
+    where: {
+      userId_consentType: { userId, consentType },
+    },
+    create: {
+      userId,
+      consentType,
+      granted,
+      grantedAt: granted ? now : null,
+      revokedAt: granted ? null : now,
+      ipAddress: typeof ipAddress === 'string' ? ipAddress : null,
+      userAgent: typeof userAgent === 'string' ? userAgent : null,
+    },
+    update: {
+      granted,
+      grantedAt: granted ? now : undefined,
+      revokedAt: !granted ? now : undefined,
+      ipAddress: typeof ipAddress === 'string' ? ipAddress : undefined,
+      userAgent: typeof userAgent === 'string' ? userAgent : undefined,
+    },
+  });
+
+  return reply.send({
+    ok: true,
+    consent: {
+      type: consent.consentType,
+      granted: consent.granted,
+      grantedAt: consent.grantedAt?.toISOString() ?? null,
+      revokedAt: consent.revokedAt?.toISOString() ?? null,
+    },
+  });
+});
 
 server.get('/v1/me/export', async (req, reply) => {
   const userId = requireAuthUserId(req, reply);
@@ -998,6 +1493,10 @@ server.delete('/v1/me', async (req, reply) => {
 async function main() {
   try {
     await server.listen({ port: PORT, host: '0.0.0.0' });
+    
+    // Start background polling job for shipment updates
+    startPollingJob();
+    
   } catch (err) {
     server.log.error(err);
     process.exit(1);

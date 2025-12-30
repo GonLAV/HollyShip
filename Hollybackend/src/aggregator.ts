@@ -63,7 +63,7 @@ export async function aggregateCarriers(trackingNumber: string, limit = 5, carri
 
 async function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)) }
 
-async function fetchWithRetry(input: RequestInfo | URL, init?: RequestInit, attempts = 3, baseDelayMs = 200): Promise<Response> {
+async function fetchWithRetry(input: string | URL, init?: RequestInit, attempts = 3, baseDelayMs = 200): Promise<Response> {
   let lastErr: any
   for (let i = 0; i < attempts; i++) {
     try {
