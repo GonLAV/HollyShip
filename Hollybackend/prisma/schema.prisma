@@ -38,6 +38,7 @@ model User {
   loyaltyEntries LoyaltyLedger[]
   shipments      Shipment[]
   usageMeters    UsageMeter[]
+  consents       Consent[]
 }
 
 model UsageMeter {
@@ -172,4 +173,23 @@ model Coupon {
   metadata    Json?
   redeemedBy  String?
   redeemedAt  DateTime?
+}
+
+model Consent {
+  id            String   @id @default(uuid())
+  userId        String
+  consentType   String   // e.g., 'email_scanning', 'data_processing', 'marketing'
+  granted       Boolean  @default(false)
+  grantedAt     DateTime?
+  revokedAt     DateTime?
+  ipAddress     String?
+  userAgent     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, consentType])
+  @@index([userId])
+  @@index([consentType, granted])
 }

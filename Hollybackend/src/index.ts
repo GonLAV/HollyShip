@@ -30,6 +30,13 @@ import {
   setupGmailWatch,
   setupOutlookSubscription,
 } from './emailIngestion.js';
+import {
+  extractFromShopify,
+  extractFromWooCommerce,
+  validateShopifyWebhook,
+  validateWooCommerceWebhook,
+  detectPlatform,
+} from './ecommerce.js';
 
 const PORT = Number(process.env.PORT || 8080);
 
@@ -1117,6 +1124,162 @@ server.post('/v1/webhooks/tracking', async (req, reply) => {
   return reply.send({ ok: true, status: canonicalStatus });
 });
 
+// Shopify webhook receiver
+server.post('/v1/webhooks/shopify/orders', async (req, reply) => {
+  const shopifySecret = process.env.SHOPIFY_WEBHOOK_SECRET;
+  
+  // Validate webhook signature
+  if (shopifySecret) {
+    const hmac = req.headers['x-shopify-hmac-sha256'];
+    if (!hmac || typeof hmac !== 'string') {
+      return reply.code(401).send({ ok: false, error: 'Missing signature' });
+    }
+
+    const rawBody = JSON.stringify(req.body);
+    if (!validateShopifyWebhook(rawBody, hmac, shopifySecret)) {
+      return reply.code(401).send({ ok: false, error: 'Invalid signature' });
+    }
+  }
+
+  try {
+    const shipments = extractFromShopify(req.body);
+    
+    if (shipments.length === 0) {
+      return reply.send({ ok: true, message: 'No tracking information found', created: 0 });
+    }
+
+    const created = [];
+    for (const shipmentData of shipments) {
+      // Find or create user by email
+      let userId: string | null = null;
+      if (shipmentData.userEmail) {
+        const user = await ensureUserByEmail(shipmentData.userEmail);
+        userId = user.id;
+      }
+
+      // Create shipment
+      const guessed = guessCarrierFromTrackingNumber(shipmentData.trackingNumber);
+      const carrierName = shipmentData.carrier || guessed?.name || null;
+      
+      let carrierId: string | null = null;
+      if (carrierName) {
+        const carrier = await prisma.carrier.upsert({
+          where: { code: carrierName.toLowerCase().replace(/\s+/g, '_') },
+          create: { code: carrierName.toLowerCase().replace(/\s+/g, '_'), name: carrierName, apiSource: 'shopify' },
+          update: { name: carrierName },
+        });
+        carrierId = carrier.id;
+      }
+
+      const shipment = await prisma.shipment.create({
+        data: {
+          userId,
+          label: shipmentData.items?.[0]?.name || shipmentData.orderNumber,
+          trackingNumber: shipmentData.trackingNumber,
+          carrierId,
+          status: 'CREATED',
+          lastEventAt: new Date(),
+        },
+      });
+
+      await prisma.trackingEvent.create({
+        data: {
+          shipmentId: shipment.id,
+          canonicalStatus: 'CREATED',
+          eventTime: new Date(),
+          carrierStatus: null,
+          location: null,
+        },
+      });
+
+      created.push(shipment.id);
+    }
+
+    return reply.send({ ok: true, created: created.length, shipmentIds: created });
+  } catch (error: any) {
+    console.error('[Shopify] Webhook processing error:', error);
+    return reply.code(400).send({ ok: false, error: error.message || 'Invalid payload' });
+  }
+});
+
+// WooCommerce webhook receiver
+server.post('/v1/webhooks/woocommerce/orders', async (req, reply) => {
+  const wooSecret = process.env.WOOCOMMERCE_WEBHOOK_SECRET;
+  
+  // Validate webhook signature
+  if (wooSecret) {
+    const signature = req.headers['x-wc-webhook-signature'];
+    if (!signature || typeof signature !== 'string') {
+      return reply.code(401).send({ ok: false, error: 'Missing signature' });
+    }
+
+    const rawBody = JSON.stringify(req.body);
+    if (!validateWooCommerceWebhook(rawBody, signature, wooSecret)) {
+      return reply.code(401).send({ ok: false, error: 'Invalid signature' });
+    }
+  }
+
+  try {
+    const shipments = extractFromWooCommerce(req.body);
+    
+    if (shipments.length === 0) {
+      return reply.send({ ok: true, message: 'No tracking information found', created: 0 });
+    }
+
+    const created = [];
+    for (const shipmentData of shipments) {
+      // Find or create user by email
+      let userId: string | null = null;
+      if (shipmentData.userEmail) {
+        const user = await ensureUserByEmail(shipmentData.userEmail);
+        userId = user.id;
+      }
+
+      // Create shipment
+      const guessed = guessCarrierFromTrackingNumber(shipmentData.trackingNumber);
+      const carrierName = shipmentData.carrier || guessed?.name || null;
+      
+      let carrierId: string | null = null;
+      if (carrierName) {
+        const carrier = await prisma.carrier.upsert({
+          where: { code: carrierName.toLowerCase().replace(/\s+/g, '_') },
+          create: { code: carrierName.toLowerCase().replace(/\s+/g, '_'), name: carrierName, apiSource: 'woocommerce' },
+          update: { name: carrierName },
+        });
+        carrierId = carrier.id;
+      }
+
+      const shipment = await prisma.shipment.create({
+        data: {
+          userId,
+          label: shipmentData.items?.[0]?.name || shipmentData.orderNumber,
+          trackingNumber: shipmentData.trackingNumber,
+          carrierId,
+          status: 'CREATED',
+          lastEventAt: new Date(),
+        },
+      });
+
+      await prisma.trackingEvent.create({
+        data: {
+          shipmentId: shipment.id,
+          canonicalStatus: 'CREATED',
+          eventTime: new Date(),
+          carrierStatus: null,
+          location: null,
+        },
+      });
+
+      created.push(shipment.id);
+    }
+
+    return reply.send({ ok: true, created: created.length, shipmentIds: created });
+  } catch (error: any) {
+    console.error('[WooCommerce] Webhook processing error:', error);
+    return reply.code(400).send({ ok: false, error: error.message || 'Invalid payload' });
+  }
+});
+
 // Persist stats rollups every minute (best-effort)
 setInterval(async () => {
   try {
@@ -1145,6 +1308,80 @@ setInterval(async () => {
     // ignore
   }
 }, 60_000);
+
+// Consent management endpoints
+
+// Get user's consent status for all types
+server.get('/v1/me/consents', async (req, reply) => {
+  const userId = requireAuthUserId(req, reply);
+  if (!userId) return;
+
+  const consents = await prisma.consent.findMany({
+    where: { userId },
+    orderBy: { consentType: 'asc' },
+  });
+
+  return reply.send({
+    ok: true,
+    consents: consents.map(c => ({
+      type: c.consentType,
+      granted: c.granted,
+      grantedAt: c.grantedAt?.toISOString() ?? null,
+      revokedAt: c.revokedAt?.toISOString() ?? null,
+    })),
+  });
+});
+
+// Grant or revoke consent
+server.post('/v1/me/consents', async (req, reply) => {
+  const userId = requireAuthUserId(req, reply);
+  if (!userId) return;
+
+  const bodySchema = z.object({
+    consentType: z.enum(['email_scanning', 'data_processing', 'marketing']),
+    granted: z.boolean(),
+  });
+
+  const { consentType, granted } = bodySchema.parse(req.body);
+
+  // Extract IP and user agent for audit trail
+  const ipAddress = req.headers['x-forwarded-for'] || req.ip || null;
+  const userAgent = req.headers['user-agent'] || null;
+
+  const now = new Date();
+
+  const consent = await prisma.consent.upsert({
+    where: {
+      userId_consentType: { userId, consentType },
+    },
+    create: {
+      userId,
+      consentType,
+      granted,
+      grantedAt: granted ? now : null,
+      revokedAt: granted ? null : now,
+      ipAddress: typeof ipAddress === 'string' ? ipAddress : null,
+      userAgent: typeof userAgent === 'string' ? userAgent : null,
+    },
+    update: {
+      granted,
+      grantedAt: granted ? now : undefined,
+      revokedAt: !granted ? now : undefined,
+      ipAddress: typeof ipAddress === 'string' ? ipAddress : undefined,
+      userAgent: typeof userAgent === 'string' ? userAgent : undefined,
+    },
+  });
+
+  return reply.send({
+    ok: true,
+    consent: {
+      type: consent.consentType,
+      granted: consent.granted,
+      grantedAt: consent.grantedAt?.toISOString() ?? null,
+      revokedAt: consent.revokedAt?.toISOString() ?? null,
+    },
+  });
+});
 
 server.get('/v1/me/export', async (req, reply) => {
   const userId = requireAuthUserId(req, reply);
