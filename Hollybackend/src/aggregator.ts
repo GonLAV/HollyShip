@@ -38,7 +38,7 @@ export async function aggregateCarriers(trackingNumber: string, limit = 5, carri
       url.searchParams.set('carrier', carrierCode)
     }
 
-    const res = await fetch(url, { headers: { 'authorization': `Bearer ${apiKey}` } })
+    const res = await fetchWithRetry(url.toString(), { headers: { 'authorization': `Bearer ${apiKey}` } })
     const json = (await res.json()) as AggregatorResponse
     const raw = Array.isArray(json.candidates) ? json.candidates : []
 
@@ -59,4 +59,26 @@ export async function aggregateCarriers(trackingNumber: string, limit = 5, carri
     const candidates = probeCarriers(trackingNumber, limit)
     return { ok: true, source: 'local', candidates }
   }
+}
+
+async function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)) }
+
+async function fetchWithRetry(input: RequestInfo | URL, init?: RequestInit, attempts = 3, baseDelayMs = 200): Promise<Response> {
+  let lastErr: any
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const res = await fetch(input, init)
+      if (res.ok) return res
+      // Retry on 5xx
+      if (res.status >= 500) {
+        await sleep(baseDelayMs * Math.pow(2, i))
+        continue
+      }
+      return res
+    } catch (err) {
+      lastErr = err
+      await sleep(baseDelayMs * Math.pow(2, i))
+    }
+  }
+  throw lastErr ?? new Error('fetchWithRetry failed')
 }
