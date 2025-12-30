@@ -1003,8 +1003,22 @@ server.post('/v1/webhooks/tracking', async (req, reply) => {
   const webhookSecret = process.env.WEBHOOK_SECRET;
   if (webhookSecret) {
     const signature = req.headers['x-webhook-signature'];
-    // Basic signature validation - extend based on provider requirements
-    if (!signature || signature !== webhookSecret) {
+    // Use timing-safe comparison to prevent timing attacks
+    if (!signature || typeof signature !== 'string') {
+      return reply.code(401).send({ ok: false, error: 'Invalid signature' });
+    }
+    
+    // Import crypto for timing-safe comparison
+    const crypto = await import('crypto');
+    const expectedBuffer = Buffer.from(webhookSecret);
+    const actualBuffer = Buffer.from(signature);
+    
+    // Ensure same length to prevent timing attacks
+    if (expectedBuffer.length !== actualBuffer.length) {
+      return reply.code(401).send({ ok: false, error: 'Invalid signature' });
+    }
+    
+    if (!crypto.timingSafeEqual(expectedBuffer, actualBuffer)) {
       return reply.code(401).send({ ok: false, error: 'Invalid signature' });
     }
   }
@@ -1046,7 +1060,15 @@ server.post('/v1/webhooks/tracking', async (req, reply) => {
 
   const normalizedStatus = body.status.toLowerCase().replace(/[\s-]/g, '_');
   const canonicalStatus = statusMapping[normalizedStatus] || 'CREATED';
-  const eventTime = body.timestamp ? new Date(body.timestamp) : new Date();
+  
+  // Validate and parse timestamp to prevent Invalid Date
+  let eventTime = new Date();
+  if (body.timestamp) {
+    const parsedTime = new Date(body.timestamp);
+    if (!isNaN(parsedTime.getTime())) {
+      eventTime = parsedTime;
+    }
+  }
 
   // Update shipment and create event
   await prisma.$transaction(async (tx) => {

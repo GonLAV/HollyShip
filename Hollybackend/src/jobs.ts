@@ -93,10 +93,10 @@ async function runPollingJob(): Promise<void> {
     console.log(`[Job] Found ${shipments.length} shipments to poll`);
 
     // Poll each shipment (staggered to avoid rate limits)
-    for (let i = 0; i < shipments.length; i++) {
+    shipments.forEach((shipment, index) => {
       // Stagger requests by 100ms to avoid rate limits
-      setTimeout(() => pollShipment(shipments[i].id), i * 100);
-    }
+      setTimeout(() => pollShipment(shipment.id), index * 100);
+    });
 
   } catch (error) {
     console.error('[Job] Error in polling job:', error);

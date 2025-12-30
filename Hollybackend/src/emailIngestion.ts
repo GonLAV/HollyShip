@@ -132,16 +132,17 @@ export function extractTrackingFromEmail(email: EmailMessage): TrackingInfo[] {
   const results: TrackingInfo[] = [];
   const content = `${email.subject} ${email.body}`;
 
-  // Common tracking number patterns
+  // Common tracking number patterns - ordered by specificity to avoid conflicts
   const patterns = [
-    // UPS: 1Z + 16 alphanumeric
+    // UPS: 1Z + 16 alphanumeric (always 18 characters total)
     { regex: /\b(1Z[0-9A-Z]{16})\b/gi, carrier: 'UPS' },
-    // FedEx: 12-14 digits
-    { regex: /\b(\d{12,14})\b/g, carrier: 'FedEx' },
-    // USPS: 20-22 digits or specific patterns
+    // USPS: 20-22 digits or specific patterns (check before generic patterns)
     { regex: /\b(9[0-9]{19,21})\b/g, carrier: 'USPS' },
     { regex: /\b(94[0-9]{20})\b/g, carrier: 'USPS' },
-    // DHL: 10-11 digits
+    // FedEx: 12 or 14 digits (specific lengths to avoid DHL conflict)
+    { regex: /\b(\d{12})\b/g, carrier: 'FedEx' },
+    { regex: /\b(\d{14})\b/g, carrier: 'FedEx' },
+    // DHL: 10-11 digits (checked after more specific patterns)
     { regex: /\b(\d{10,11})\b/g, carrier: 'DHL' },
   ];
 

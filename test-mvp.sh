@@ -162,7 +162,7 @@ fi
 
 # Test 11: Carrier detection
 echo -e "${BLUE}Test 11: Carrier Detection${NC}"
-DETECT=$(curl -s "$API_BASE/v1/carriers/detect?trackingNumber=1Z999AA10123456789&limit=3")
+DETECT=$(curl -s "$API_BASE/v1/carriers/detect?trackingNumber=1Z999AA10123456784&limit=3")
 CANDIDATES=$(echo "$DETECT" | jq '.candidates | length')
 
 if [ "$CANDIDATES" -gt "0" ]; then
