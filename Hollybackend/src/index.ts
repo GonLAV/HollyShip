@@ -21,6 +21,7 @@ import {
   revokeSessionsForUser,
 } from './auth.js';
 import { decryptField, encryptField, isCryptoConfigured } from './cryptoUtils.js';
+import { startPollingJob, getJobStatus } from './jobs.js';
 
 const PORT = Number(process.env.PORT || 8080);
 
@@ -77,6 +78,22 @@ function monthStartUtc(now: Date) {
 
 function truncateToMinuteUtc(now: Date) {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), now.getUTCHours(), now.getUTCMinutes(), 0, 0));
+}
+
+async function checkDailyAccrualCap(userId: string, pointsToAdd: number): Promise<boolean> {
+  const dailyCap = Number(process.env.DAILY_POINTS_CAP || 500);
+  const today = startOfDayUtc(new Date());
+  
+  const dailyTotal = await prisma.loyaltyLedger.aggregate({
+    where: {
+      userId,
+      createdAt: { gte: today },
+    },
+    _sum: { points: true },
+  });
+
+  const currentPoints = dailyTotal._sum.points ?? 0;
+  return (currentPoints + pointsToAdd) <= dailyCap;
 }
 
 async function computeStatsSnapshot() {
@@ -213,6 +230,16 @@ await server.register(swaggerUi, {
 
 server.get('/health', async () => {
   return { ok: true, service: 'hollyship-backend', time: new Date().toISOString() };
+});
+
+server.get('/v1/jobs/status', async () => {
+  const status = getJobStatus();
+  return {
+    ok: true,
+    jobs: {
+      polling: status,
+    },
+  };
 });
 
 server.get('/v1/stats/stream', async (req, reply) => {
@@ -843,20 +870,123 @@ server.post('/v1/shipments/:id/simulate-status', async (req, reply) => {
       update: {},
     });
 
-    await prisma.loyaltyLedger.upsert({
-      where: {
-        userId_shipmentId_reason: {
-          userId: effectiveUserId,
-          shipmentId: shipment.id,
-          reason,
+    // Check daily accrual cap before awarding points
+    const canAccrue = await checkDailyAccrualCap(effectiveUserId, points);
+    if (canAccrue) {
+      await prisma.loyaltyLedger.upsert({
+        where: {
+          userId_shipmentId_reason: {
+            userId: effectiveUserId,
+            shipmentId: shipment.id,
+            reason,
+          },
         },
-      },
-      create: { userId: effectiveUserId, shipmentId: shipment.id, reason, points },
-      update: {},
-    });
+        create: { userId: effectiveUserId, shipmentId: shipment.id, reason, points },
+        update: {},
+      });
+    }
   }
 
   return reply.send({ ok: true });
+});
+
+// Webhook receiver for tracking updates from external providers
+// Supports generic payload format from aggregators like AfterShip, 17TRACK, EasyPost, Shippo
+server.post('/v1/webhooks/tracking', async (req, reply) => {
+  // Validate webhook signature if configured
+  const webhookSecret = process.env.WEBHOOK_SECRET;
+  if (webhookSecret) {
+    const signature = req.headers['x-webhook-signature'];
+    // Basic signature validation - extend based on provider requirements
+    if (!signature || signature !== webhookSecret) {
+      return reply.code(401).send({ ok: false, error: 'Invalid signature' });
+    }
+  }
+
+  const bodySchema = z.object({
+    trackingNumber: z.string().min(3),
+    carrier: z.string().optional(),
+    status: z.string(),
+    location: z.string().optional(),
+    timestamp: z.string().optional(),
+    metadata: z.unknown().optional(),
+  });
+
+  const body = bodySchema.parse(req.body);
+  
+  // Find shipment by tracking number
+  const shipment = await prisma.shipment.findFirst({
+    where: { trackingNumber: body.trackingNumber },
+    include: { carrier: true },
+  });
+
+  if (!shipment) {
+    return reply.code(404).send({ ok: false, error: 'Shipment not found' });
+  }
+
+  // Map carrier status to canonical status
+  const statusMapping: Record<string, CanonicalStatus> = {
+    'created': 'CREATED',
+    'pending': 'CREATED',
+    'in_transit': 'IN_TRANSIT',
+    'transit': 'IN_TRANSIT',
+    'out_for_delivery': 'OUT_FOR_DELIVERY',
+    'delivered': 'DELIVERED',
+    'delayed': 'DELAYED',
+    'exception': 'ACTION_REQUIRED',
+    'failed': 'FAILURE',
+    'failure': 'FAILURE',
+  };
+
+  const normalizedStatus = body.status.toLowerCase().replace(/[\s-]/g, '_');
+  const canonicalStatus = statusMapping[normalizedStatus] || 'CREATED';
+  const eventTime = body.timestamp ? new Date(body.timestamp) : new Date();
+
+  // Update shipment and create event
+  await prisma.$transaction(async (tx) => {
+    await tx.shipment.update({
+      where: { id: shipment.id },
+      data: {
+        status: canonicalStatus,
+        lastEventAt: eventTime,
+      },
+    });
+
+    await tx.trackingEvent.create({
+      data: {
+        shipmentId: shipment.id,
+        canonicalStatus,
+        carrierStatus: body.status,
+        location: body.location ?? null,
+        eventTime,
+        payload: body.metadata as any,
+      },
+    });
+
+    // Award loyalty points if applicable (with daily cap check)
+    if (shipment.userId && (canonicalStatus === 'IN_TRANSIT' || canonicalStatus === 'DELIVERED')) {
+      const points = canonicalStatus === 'IN_TRANSIT' ? 25 : 50;
+      const reason = canonicalStatus;
+
+      // Check daily cap before awarding
+      const canAccrue = await checkDailyAccrualCap(shipment.userId, points);
+      if (canAccrue) {
+        await tx.loyaltyLedger.upsert({
+          where: {
+            userId_shipmentId_reason: {
+              userId: shipment.userId,
+              shipmentId: shipment.id,
+              reason,
+            },
+          },
+          create: { userId: shipment.userId, shipmentId: shipment.id, reason, points },
+          update: {},
+        });
+      }
+    }
+  });
+
+  return reply.send({ ok: true, status: canonicalStatus });
 });
 
 // Persist stats rollups every minute (best-effort)
@@ -998,6 +1128,10 @@ server.delete('/v1/me', async (req, reply) => {
 async function main() {
   try {
     await server.listen({ port: PORT, host: '0.0.0.0' });
+    
+    // Start background polling job for shipment updates
+    startPollingJob();
+    
   } catch (err) {
     server.log.error(err);
     process.exit(1);
