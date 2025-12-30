@@ -177,7 +177,14 @@ export default function App() {
 
   const [trackingNumber, setTrackingNumber] = useState('');
   const [packageName, setPackageName] = useState('');
-  const [carrier, setCarrier] = useState('');
+  const [carrier, setCarrier] = useState('AUTO');
+  const [carrierSuggestions, setCarrierSuggestions] = useState([]);
+  const [suggestedAuto, setSuggestedAuto] = useState(null);
+  // Cache entries: { ts: number, candidates: any[] }
+  const [probeCache] = useState(() => new Map());
+  const CONFIDENCE_THRESHOLD = 0.85;
+  const PROBE_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+  const PROBE_DEBOUNCE_MS = 350;
   const [isAddingOrder, setIsAddingOrder] = useState(false);
 
   const forwardEmailRef = useRef('track-abc123xyz@hollyship.app');
@@ -280,6 +287,57 @@ export default function App() {
     })();
   }, []);
 
+  // Probe carriers for the entered trackingNumber with debounce + TTL cache and threshold auto-select
+  useEffect(() => {
+    const tn = (trackingNumber || '').trim();
+    if (tn.length < 3) {
+      setCarrierSuggestions([]);
+      setSuggestedAuto(null);
+      setCarrier('AUTO');
+      return;
+    }
+
+    let cancelled = false;
+    const cached = probeCache.get(tn);
+    if (cached && (Date.now() - cached.ts) < PROBE_CACHE_TTL_MS) {
+      setCarrierSuggestions(cached.candidates);
+      const best = cached.candidates[0];
+      if (best && (best.probability ?? 0) >= CONFIDENCE_THRESHOLD) {
+        setSuggestedAuto(best);
+        setCarrier(best.name || best.code || 'AUTO');
+      } else {
+        setSuggestedAuto(null);
+        setCarrier('AUTO');
+      }
+      return;
+    }
+
+    const handle = setTimeout(() => {
+      (async () => {
+        try {
+          const resp = await fetch(`/v1/carriers/aggregate?trackingNumber=${encodeURIComponent(tn)}&limit=5`);
+          const data = await resp.json();
+          const candidates = Array.isArray(data?.candidates) ? data.candidates : [];
+          if (cancelled) return;
+          setCarrierSuggestions(candidates);
+          probeCache.set(tn, { ts: Date.now(), candidates });
+          const best = candidates[0];
+          if (best && (best.probability ?? 0) >= CONFIDENCE_THRESHOLD) {
+            setSuggestedAuto(best);
+            setCarrier(best.name || best.code || 'AUTO');
+          } else {
+            setSuggestedAuto(null);
+            setCarrier('AUTO');
+          }
+        } catch {
+          // ignore; keep manual entry
+        }
+      })();
+    }, PROBE_DEBOUNCE_MS);
+
+    return () => { cancelled = true; clearTimeout(handle); };
+  }, [trackingNumber, probeCache]);
+
   function showToast(message) {
     const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     setToasts((prev) => [...prev, { id, message }]);
@@ -297,7 +355,7 @@ export default function App() {
   }
 
   async function submitAddOrder() {
-    if (!trackingNumber || !packageName || !carrier) {
+    if (!trackingNumber || !packageName) {
       showToast('❌ Please fill in all fields');
       return;
     }
@@ -337,7 +395,7 @@ export default function App() {
       showToast('✅ Order added successfully! Tracking now...');
       setTrackingNumber('');
       setPackageName('');
-      setCarrier('');
+      setCarrier('AUTO');
     } catch {
       showToast('❌ Could not reach backend. Added locally.');
       setOrders((prev) => [
@@ -358,7 +416,7 @@ export default function App() {
       closeModal();
       setTrackingNumber('');
       setPackageName('');
-      setCarrier('');
+      setCarrier('AUTO');
     } finally {
       setIsAddingOrder(false);
     }
@@ -581,24 +639,37 @@ export default function App() {
 
           <div className="form-group">
             <label className="form-label" htmlFor="carrier">
-              Carrier
+              Carrier (Auto-detect)
             </label>
-            <select
-              className="form-select"
-              id="carrier"
-              required
-              value={carrier}
-              onChange={(e) => setCarrier(e.target.value)}
-            >
-              <option value="">Select carrier...</option>
-              <option value="UPS">UPS</option>
-              <option value="FedEx">FedEx</option>
-              <option value="USPS">USPS</option>
-              <option value="DHL">DHL</option>
-              <option value="Amazon">Amazon Logistics</option>
-              <option value="OnTrac">OnTrac</option>
-              <option value="LaserShip">LaserShip</option>
-            </select>
+            <div className="form-helper" style={{ marginBottom: 8 }}>
+              {suggestedAuto ? (
+                <span>
+                  ✅ Auto-selected: <strong>{suggestedAuto.name || suggestedAuto.code}</strong> ({Math.round((suggestedAuto.probability ?? 0) * 100)}%)
+                </span>
+              ) : (
+                <span>We’ll auto-detect. If unsure, pick from suggestions.</span>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                className={`btn ${carrier === 'AUTO' ? 'btn-primary' : 'btn-secondary'}`}
+                type="button"
+                onClick={() => setCarrier('AUTO')}
+              >
+                AUTO
+              </button>
+              {carrierSuggestions.map((c, idx) => (
+                <button
+                  key={`cand-${idx}`}
+                  className={`btn ${carrier === (c.name || c.code) ? 'btn-primary' : 'btn-secondary'}`}
+                  type="button"
+                  onClick={() => setCarrier(c.name || c.code || 'AUTO')}
+                  title={c.matchedPattern ? `Matched: ${c.matchedPattern}` : ''}
+                >
+                  {(c.name || c.code)} ({Math.round((c.probability ?? 0.6) * 100)}%)
+                </button>
+              ))}
+            </div>
           </div>
         </form>
       </Modal>
