@@ -682,6 +682,10 @@ server.get('/v1/shipments', async (req, reply) => {
         destinationLng: s.destinationLng ?? null,
         currentLat: s.currentLat ?? null,
         currentLng: s.currentLng ?? null,
+        requestedDeliveryTime: s.requestedDeliveryTime?.toISOString() ?? null,
+        deliveryNotes: s.deliveryNotes ?? null,
+        allowTimeChange: s.allowTimeChange,
+        allowDestinationChange: s.allowDestinationChange,
         lastEventAt: s.lastEventAt?.toISOString() ?? null,
         createdAt: s.createdAt.toISOString(),
         events: s.events.map((e) => ({
@@ -738,6 +742,10 @@ server.get('/v1/shipments/:id', async (req, reply) => {
     destinationLng: shipment.destinationLng ?? null,
     currentLat: shipment.currentLat ?? null,
     currentLng: shipment.currentLng ?? null,
+    requestedDeliveryTime: shipment.requestedDeliveryTime?.toISOString() ?? null,
+    deliveryNotes: shipment.deliveryNotes ?? null,
+    allowTimeChange: shipment.allowTimeChange,
+    allowDestinationChange: shipment.allowDestinationChange,
     lastEventAt: shipment.lastEventAt?.toISOString() ?? null,
     createdAt: shipment.createdAt.toISOString(),
     events: shipment.events.map((e) => ({
@@ -1148,6 +1156,331 @@ server.post('/v1/shipments/:id/simulate-status', async (req, reply) => {
       });
     }
   }
+
+  return reply.send({ ok: true });
+});
+
+// Update delivery time or destination
+server.patch('/v1/shipments/:id/delivery', async (req, reply) => {
+  const paramsSchema = z.object({ id: z.string().uuid() });
+  const bodySchema = z.object({
+    requestedDeliveryTime: z.string().datetime().optional(),
+    destination: z.string().min(1).max(200).optional(),
+    destinationLat: z.number().min(-90).max(90).optional(),
+    destinationLng: z.number().min(-180).max(180).optional(),
+    deliveryNotes: z.string().max(500).optional(),
+  });
+
+  const { id } = paramsSchema.parse(req.params);
+  const body = bodySchema.parse(req.body);
+  const authUserId = getAuthUserId(req);
+
+  const shipment = await prisma.shipment.findUnique({
+    where: { id },
+    select: { 
+      id: true, 
+      userId: true, 
+      status: true,
+      allowTimeChange: true,
+      allowDestinationChange: true
+    },
+  });
+
+  if (!shipment) return reply.code(404).send({ ok: false, error: 'Shipment not found' });
+  
+  if (authUserId && shipment.userId && shipment.userId !== authUserId) {
+    return reply.code(403).send({ ok: false, error: 'Forbidden' });
+  }
+
+  // Check if delivery is already completed
+  if (shipment.status === 'DELIVERED') {
+    return reply.code(400).send({ ok: false, error: 'Cannot modify delivered shipment' });
+  }
+
+  // Validate permissions
+  if (body.requestedDeliveryTime && !shipment.allowTimeChange) {
+    return reply.code(403).send({ ok: false, error: 'Carrier does not support delivery time changes' });
+  }
+
+  if ((body.destination || body.destinationLat || body.destinationLng) && !shipment.allowDestinationChange) {
+    return reply.code(403).send({ ok: false, error: 'Carrier does not support destination changes' });
+  }
+
+  const updated = await prisma.shipment.update({
+    where: { id },
+    data: {
+      ...(body.requestedDeliveryTime ? { requestedDeliveryTime: new Date(body.requestedDeliveryTime) } : {}),
+      ...(body.destination ? { destination: body.destination } : {}),
+      ...(body.destinationLat !== undefined ? { destinationLat: body.destinationLat } : {}),
+      ...(body.destinationLng !== undefined ? { destinationLng: body.destinationLng } : {}),
+      ...(body.deliveryNotes !== undefined ? { deliveryNotes: body.deliveryNotes } : {}),
+    },
+  });
+
+  return reply.send({ 
+    ok: true, 
+    shipment: {
+      id: updated.id,
+      requestedDeliveryTime: updated.requestedDeliveryTime?.toISOString() ?? null,
+      destination: updated.destination,
+      deliveryNotes: updated.deliveryNotes,
+    }
+  });
+});
+
+// Upload delivery photo (proof of delivery)
+server.post('/v1/shipments/:id/delivery-photo', async (req, reply) => {
+  const paramsSchema = z.object({ id: z.string().uuid() });
+  const bodySchema = z.object({
+    photoUrl: z.string().url(),
+    photoHash: z.string().optional(),
+    capturedAt: z.string().datetime().optional(),
+    metadata: z.unknown().optional(),
+  });
+
+  const { id } = paramsSchema.parse(req.params);
+  const body = bodySchema.parse(req.body);
+  const authUserId = getAuthUserId(req);
+
+  const shipment = await prisma.shipment.findUnique({
+    where: { id },
+    select: { id: true, userId: true },
+  });
+
+  if (!shipment) return reply.code(404).send({ ok: false, error: 'Shipment not found' });
+  
+  if (authUserId && shipment.userId && shipment.userId !== authUserId) {
+    return reply.code(403).send({ ok: false, error: 'Forbidden' });
+  }
+
+  const photo = await prisma.deliveryPhoto.create({
+    data: {
+      shipmentId: id,
+      photoUrl: body.photoUrl,
+      photoHash: body.photoHash ?? null,
+      capturedAt: body.capturedAt ? new Date(body.capturedAt) : null,
+      metadata: body.metadata as Prisma.InputJsonValue ?? undefined,
+    },
+  });
+
+  return reply.send({
+    ok: true,
+    photo: {
+      id: photo.id,
+      photoUrl: photo.photoUrl,
+      uploadedAt: photo.uploadedAt.toISOString(),
+      capturedAt: photo.capturedAt?.toISOString() ?? null,
+    },
+  });
+});
+
+// Get delivery photos for a shipment
+server.get('/v1/shipments/:id/delivery-photos', async (req, reply) => {
+  const paramsSchema = z.object({ id: z.string().uuid() });
+  const { id } = paramsSchema.parse(req.params);
+  const authUserId = getAuthUserId(req);
+
+  const shipment = await prisma.shipment.findUnique({
+    where: { id },
+    select: { id: true, userId: true },
+  });
+
+  if (!shipment) return reply.code(404).send({ ok: false, error: 'Shipment not found' });
+  
+  if (authUserId && shipment.userId && shipment.userId !== authUserId) {
+    return reply.code(403).send({ ok: false, error: 'Forbidden' });
+  }
+
+  const photos = await prisma.deliveryPhoto.findMany({
+    where: { shipmentId: id },
+    orderBy: { uploadedAt: 'desc' },
+  });
+
+  return reply.send({
+    ok: true,
+    photos: photos.map((p) => ({
+      id: p.id,
+      photoUrl: p.photoUrl,
+      uploadedAt: p.uploadedAt.toISOString(),
+      capturedAt: p.capturedAt?.toISOString() ?? null,
+    })),
+  });
+});
+
+// Save delivery address with notes
+server.post('/v1/addresses', async (req, reply) => {
+  const bodySchema = z.object({
+    addressLine1: z.string().min(1).max(200),
+    addressLine2: z.string().max(200).optional(),
+    city: z.string().min(1).max(100),
+    state: z.string().max(50).optional(),
+    postalCode: z.string().min(1).max(20),
+    country: z.string().length(2).default('US'),
+    gateCode: z.string().max(50).optional(),
+    deliveryNotes: z.string().max(500).optional(),
+    nickname: z.string().max(50).optional(),
+    isDefault: z.boolean().default(false),
+  });
+
+  const body = bodySchema.parse(req.body);
+  const authUserId = requireAuthUserId(req, reply);
+  if (!authUserId) return;
+
+  // If setting as default, unset other defaults
+  if (body.isDefault) {
+    await prisma.address.updateMany({
+      where: { userId: authUserId, isDefault: true },
+      data: { isDefault: false },
+    });
+  }
+
+  const address = await prisma.address.create({
+    data: {
+      userId: authUserId,
+      addressLine1: body.addressLine1,
+      addressLine2: body.addressLine2 ?? null,
+      city: body.city,
+      state: body.state ?? null,
+      postalCode: body.postalCode,
+      country: body.country,
+      gateCode: body.gateCode ?? null,
+      deliveryNotes: body.deliveryNotes ?? null,
+      nickname: body.nickname ?? null,
+      isDefault: body.isDefault,
+    },
+  });
+
+  return reply.send({
+    ok: true,
+    address: {
+      id: address.id,
+      addressLine1: address.addressLine1,
+      addressLine2: address.addressLine2,
+      city: address.city,
+      state: address.state,
+      postalCode: address.postalCode,
+      country: address.country,
+      nickname: address.nickname,
+      deliveryNotes: address.deliveryNotes,
+      isDefault: address.isDefault,
+    },
+  });
+});
+
+// List user's saved addresses
+server.get('/v1/addresses', async (req, reply) => {
+  const authUserId = requireAuthUserId(req, reply);
+  if (!authUserId) return;
+
+  const addresses = await prisma.address.findMany({
+    where: { userId: authUserId },
+    orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
+  });
+
+  return reply.send({
+    ok: true,
+    addresses: addresses.map((a) => ({
+      id: a.id,
+      addressLine1: a.addressLine1,
+      addressLine2: a.addressLine2,
+      city: a.city,
+      state: a.state,
+      postalCode: a.postalCode,
+      country: a.country,
+      nickname: a.nickname,
+      deliveryNotes: a.deliveryNotes,
+      isDefault: a.isDefault,
+    })),
+  });
+});
+
+// Update saved address
+server.patch('/v1/addresses/:id', async (req, reply) => {
+  const paramsSchema = z.object({ id: z.string().uuid() });
+  const bodySchema = z.object({
+    addressLine1: z.string().min(1).max(200).optional(),
+    addressLine2: z.string().max(200).optional(),
+    city: z.string().min(1).max(100).optional(),
+    state: z.string().max(50).optional(),
+    postalCode: z.string().min(1).max(20).optional(),
+    gateCode: z.string().max(50).optional(),
+    deliveryNotes: z.string().max(500).optional(),
+    nickname: z.string().max(50).optional(),
+    isDefault: z.boolean().optional(),
+  });
+
+  const { id } = paramsSchema.parse(req.params);
+  const body = bodySchema.parse(req.body);
+  const authUserId = requireAuthUserId(req, reply);
+  if (!authUserId) return;
+
+  const existing = await prisma.address.findUnique({
+    where: { id },
+    select: { userId: true },
+  });
+
+  if (!existing) return reply.code(404).send({ ok: false, error: 'Address not found' });
+  if (existing.userId !== authUserId) {
+    return reply.code(403).send({ ok: false, error: 'Forbidden' });
+  }
+
+  // If setting as default, unset other defaults
+  if (body.isDefault) {
+    await prisma.address.updateMany({
+      where: { userId: authUserId, isDefault: true },
+      data: { isDefault: false },
+    });
+  }
+
+  const updated = await prisma.address.update({
+    where: { id },
+    data: {
+      ...(body.addressLine1 ? { addressLine1: body.addressLine1 } : {}),
+      ...(body.addressLine2 !== undefined ? { addressLine2: body.addressLine2 } : {}),
+      ...(body.city ? { city: body.city } : {}),
+      ...(body.state !== undefined ? { state: body.state } : {}),
+      ...(body.postalCode ? { postalCode: body.postalCode } : {}),
+      ...(body.gateCode !== undefined ? { gateCode: body.gateCode } : {}),
+      ...(body.deliveryNotes !== undefined ? { deliveryNotes: body.deliveryNotes } : {}),
+      ...(body.nickname !== undefined ? { nickname: body.nickname } : {}),
+      ...(body.isDefault !== undefined ? { isDefault: body.isDefault } : {}),
+    },
+  });
+
+  return reply.send({
+    ok: true,
+    address: {
+      id: updated.id,
+      addressLine1: updated.addressLine1,
+      addressLine2: updated.addressLine2,
+      city: updated.city,
+      state: updated.state,
+      postalCode: updated.postalCode,
+      nickname: updated.nickname,
+      deliveryNotes: updated.deliveryNotes,
+      isDefault: updated.isDefault,
+    },
+  });
+});
+
+// Delete saved address
+server.delete('/v1/addresses/:id', async (req, reply) => {
+  const paramsSchema = z.object({ id: z.string().uuid() });
+  const { id } = paramsSchema.parse(req.params);
+  const authUserId = requireAuthUserId(req, reply);
+  if (!authUserId) return;
+
+  const existing = await prisma.address.findUnique({
+    where: { id },
+    select: { userId: true },
+  });
+
+  if (!existing) return reply.code(404).send({ ok: false, error: 'Address not found' });
+  if (existing.userId !== authUserId) {
+    return reply.code(403).send({ ok: false, error: 'Forbidden' });
+  }
+
+  await prisma.address.delete({ where: { id } });
 
   return reply.send({ ok: true });
 });

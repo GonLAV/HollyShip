@@ -178,6 +178,19 @@ export default function HollyShipMapApp() {
   const [pickupOptimizing, setPickupOptimizing] = useState(false);
   const [pickupResults, setPickupResults] = useState(null);
 
+  // Delivery modification modal state
+  const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false);
+  const [selectedShipmentForDelivery, setSelectedShipmentForDelivery] = useState(null);
+  const [newDeliveryTime, setNewDeliveryTime] = useState('');
+  const [newDestination, setNewDestination] = useState('');
+  const [newDeliveryNotes, setNewDeliveryNotes] = useState('');
+  const [isUpdatingDelivery, setIsUpdatingDelivery] = useState(false);
+
+  // Delivery photos modal state
+  const [isPhotosModalOpen, setIsPhotosModalOpen] = useState(false);
+  const [selectedShipmentForPhotos, setSelectedShipmentForPhotos] = useState(null);
+  const [deliveryPhotos, setDeliveryPhotos] = useState([]);
+
   const totalPoints = loyaltyPoints;
   const isAuthenticated = Boolean(authUser.userId);
 
@@ -698,6 +711,56 @@ export default function HollyShipMapApp() {
     }
   }
 
+  async function openDeliveryModal(pkg) {
+    setSelectedShipmentForDelivery(pkg);
+    setNewDeliveryTime('');
+    setNewDestination(pkg.destination || '');
+    setNewDeliveryNotes(pkg.deliveryNotes || '');
+    setIsDeliveryModalOpen(true);
+  }
+
+  async function updateDelivery(e) {
+    if (e) e.preventDefault();
+    if (!selectedShipmentForDelivery) return;
+
+    setIsUpdatingDelivery(true);
+    try {
+      const resp = await apiFetch(`/v1/shipments/${selectedShipmentForDelivery.__backendId}/delivery`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          ...(newDeliveryTime ? { requestedDeliveryTime: new Date(newDeliveryTime).toISOString() } : {}),
+          ...(newDestination ? { destination: newDestination } : {}),
+          ...(newDeliveryNotes ? { deliveryNotes: newDeliveryNotes } : {}),
+        }),
+      });
+
+      if (!resp.ok) throw new Error('Failed to update delivery');
+
+      await fetchPackages();
+      setIsDeliveryModalOpen(false);
+    } catch (err) {
+      console.error('Delivery update failed:', err);
+      alert('Failed to update delivery details. The carrier may not support changes.');
+    } finally {
+      setIsUpdatingDelivery(false);
+    }
+  }
+
+  async function openPhotosModal(pkg) {
+    setSelectedShipmentForPhotos(pkg);
+    setIsPhotosModalOpen(true);
+    
+    try {
+      const resp = await apiFetch(`/v1/shipments/${pkg.__backendId}/delivery-photos`);
+      if (resp.ok) {
+        const data = await resp.json();
+        setDeliveryPhotos(data.photos || []);
+      }
+    } catch (err) {
+      console.error('Failed to load photos:', err);
+    }
+  }
 
   return (
     <div id="app-wrapper">
@@ -864,18 +927,49 @@ export default function HollyShipMapApp() {
                     </div>
 
                     {pkg.status !== 'DELIVERED' ? (
+                      <>
+                        <button
+                          className="claim-btn"
+                          style={{
+                            marginTop: 12,
+                            background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+                          }}
+                          onClick={(e) => onUpdateStatus(e, pkg.__backendId)}
+                          type="button"
+                        >
+                          📦 Update Status
+                        </button>
+                        <button
+                          className="claim-btn"
+                          style={{
+                            marginTop: 8,
+                            background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openDeliveryModal(pkg);
+                          }}
+                          type="button"
+                        >
+                          📝 Modify Delivery
+                        </button>
+                      </>
+                    ) : (
                       <button
                         className="claim-btn"
                         style={{
                           marginTop: 12,
-                          background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+                          background: 'linear-gradient(135deg, #18C37E 0%, #14A664 100%)',
                         }}
-                        onClick={(e) => onUpdateStatus(e, pkg.__backendId)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openPhotosModal(pkg);
+                        }}
                         type="button"
                       >
-                        📦 Update Status
+                        📸 View Delivery Photos
                       </button>
-                    ) : null}
+                    )}
 
                     <button className="delete-btn" onClick={(e) => onDelete(e, pkg.__backendId)} type="button">
                       {isConfirm ? '⚠️ Confirm Delete?' : '🗑️ Remove Tracking'}
@@ -1225,6 +1319,136 @@ export default function HollyShipMapApp() {
               </button>
             </div>
           </form>
+        </div>
+      </div>
+
+      {/* Delivery Modification Modal */}
+      <div className={`modal-overlay ${isDeliveryModalOpen ? 'active' : ''}`}>
+        <div className="modal-content glass" style={{ maxWidth: 600 }}>
+          <h2 className="modal-header">📝 Modify Delivery</h2>
+          <p style={{ fontSize: 14, color: '#666', marginBottom: 20 }}>
+            Change your delivery time or destination when supported by the carrier.
+          </p>
+          <form onSubmit={updateDelivery}>
+            <div className="form-group">
+              <label className="form-label" htmlFor="delivery-time-input">
+                Requested Delivery Time (Optional)
+              </label>
+              <input
+                type="datetime-local"
+                id="delivery-time-input"
+                className="form-input"
+                value={newDeliveryTime}
+                onChange={(e) => setNewDeliveryTime(e.target.value)}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="new-dest-input">
+                New Destination (Optional)
+              </label>
+              <input
+                type="text"
+                id="new-dest-input"
+                className="form-input"
+                placeholder="e.g., Los Angeles, CA"
+                value={newDestination}
+                onChange={(e) => setNewDestination(e.target.value)}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="delivery-notes-input">
+                Delivery Notes
+              </label>
+              <textarea
+                id="delivery-notes-input"
+                className="form-input"
+                placeholder="Gate code, drop-off preferences, special instructions..."
+                rows={4}
+                value={newDeliveryNotes}
+                onChange={(e) => setNewDeliveryNotes(e.target.value)}
+                maxLength={500}
+              />
+              <div style={{ fontSize: 12, color: '#888', marginTop: 4 }}>
+                {newDeliveryNotes.length}/500 characters
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => {
+                  setIsDeliveryModalOpen(false);
+                  setSelectedShipmentForDelivery(null);
+                }}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={isUpdatingDelivery}>
+                {isUpdatingDelivery ? (
+                  <>
+                    <span className="loading-spinner"></span> Updating...
+                  </>
+                ) : (
+                  'Update Delivery'
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      {/* Delivery Photos Modal */}
+      <div className={`modal-overlay ${isPhotosModalOpen ? 'active' : ''}`}>
+        <div className="modal-content glass" style={{ maxWidth: 700 }}>
+          <h2 className="modal-header">📸 Delivery Photos</h2>
+          <p style={{ fontSize: 14, color: '#666', marginBottom: 20 }}>
+            Proof of delivery photos for tracking number: {selectedShipmentForPhotos?.trackingNumber}
+          </p>
+          
+          {deliveryPhotos.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 40, color: '#888' }}>
+              <div style={{ fontSize: 48, marginBottom: 16 }}>📷</div>
+              <div>No delivery photos available yet</div>
+              <div style={{ fontSize: 13, marginTop: 8 }}>
+                Photos will appear here once the courier completes delivery
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16 }}>
+              {deliveryPhotos.map((photo) => (
+                <div key={photo.id} style={{ border: '1px solid #e0e0e0', borderRadius: 8, overflow: 'hidden' }}>
+                  <img 
+                    src={photo.photoUrl} 
+                    alt="Delivery proof" 
+                    style={{ width: '100%', height: 200, objectFit: 'cover' }}
+                  />
+                  <div style={{ padding: 12, fontSize: 12, color: '#666' }}>
+                    <div>📅 {new Date(photo.uploadedAt).toLocaleString()}</div>
+                    {photo.capturedAt && (
+                      <div style={{ marginTop: 4 }}>📸 {new Date(photo.capturedAt).toLocaleString()}</div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="modal-actions" style={{ marginTop: 24 }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                setIsPhotosModalOpen(false);
+                setSelectedShipmentForPhotos(null);
+                setDeliveryPhotos([]);
+              }}
+            >
+              Close
+            </button>
+          </div>
         </div>
       </div>
     </div>
