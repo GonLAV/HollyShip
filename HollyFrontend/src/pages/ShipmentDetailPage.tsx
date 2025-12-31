@@ -167,7 +167,7 @@ export default function ShipmentDetailPage() {
               />
             </label>
             <p className="eta-message">{etaMsg}</p>
-            {expectedDays != null && etaMsg.includes('overdue') && (
+            {expectedDays != null && etaMsg.includes('contact') && (
               <p>
                 <a className="chip" href={supportMailto(detail, expectedDays)} target="_blank" rel="noreferrer">Contact support</a>
               </p>
