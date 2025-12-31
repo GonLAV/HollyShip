@@ -9,8 +9,8 @@ The Fireworks Animation feature enhances the user experience by displaying a cel
 ### Front-End Components
 
 #### 1. Animation Library
-- **Library**: `canvas-confetti` (v1.9.4)
-- **Location**: Already installed in `HollyFrontend/package.json`
+- **Library**: `canvas-confetti`
+- **Version**: See `HollyFrontend/package.json` for current version
 - **Documentation**: https://www.npmjs.com/package/canvas-confetti
 
 #### 2. Animation Functions
