@@ -666,9 +666,11 @@ export default function HollyShipMapApp() {
     setPickupResults(null);
 
     try {
-      // Simple geocoding - in production, use a real geocoding API
-      const originCoords = { lat: 37.7749, lng: -122.4194 }; // Default SF
-      const destCoords = { lat: 40.7128, lng: -74.0060 }; // Default NYC
+      // MVP: Using fixed coordinates for demo. In production, integrate a geocoding API
+      // (Google Maps Geocoding, Mapbox, or similar) to convert city names to coordinates.
+      // For now, San Francisco and New York serve as representative examples.
+      const originCoords = { lat: 37.7749, lng: -122.4194 }; // San Francisco, CA
+      const destCoords = { lat: 40.7128, lng: -74.0060 }; // New York, NY
 
       const resp = await fetch('/v1/shipments/optimize-pickup', {
         method: 'POST',

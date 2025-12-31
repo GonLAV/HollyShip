@@ -823,9 +823,20 @@ server.get('/v1/shipments/:id/eta', async (req, reply) => {
     return reply.code(403).send({ ok: false, error: 'Forbidden' });
   }
   
+  // Default coordinates if shipment doesn't have them
+  // Memphis, TN (common US shipping hub) and NYC (major destination)
+  const DEFAULT_ORIGIN = { lat: 35.1495, lng: -90.049 }; // Memphis, TN Hub
+  const DEFAULT_DEST = { lat: 40.7128, lng: -74.0060 }; // New York, NY
+  
   // Get coordinates
-  const origin = { lat: shipment.originLat ?? 35.1495, lng: shipment.originLng ?? -90.049 };
-  const destination = { lat: shipment.destinationLat ?? 40.7128, lng: shipment.destinationLng ?? -74.0060 };
+  const origin = { 
+    lat: shipment.originLat ?? DEFAULT_ORIGIN.lat, 
+    lng: shipment.originLng ?? DEFAULT_ORIGIN.lng 
+  };
+  const destination = { 
+    lat: shipment.destinationLat ?? DEFAULT_DEST.lat, 
+    lng: shipment.destinationLng ?? DEFAULT_DEST.lng 
+  };
   
   // Calculate ETA with confidence
   const prediction = predictEtaWithConfidence(
