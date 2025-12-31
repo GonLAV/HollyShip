@@ -744,6 +744,11 @@ server.post('/v1/shipments/:id/refresh', async (req, reply) => {
   return reply.code(202).send({ accepted: true });
 });
 
+// Helper function to convert factor to percentage
+function toPercentage(factor: number): number {
+  return Math.round(factor * 100);
+}
+
 // New endpoint: Get ETA prediction with confidence scoring
 server.get('/v1/shipments/:id/eta-confidence', async (req, reply) => {
   const paramsSchema = z.object({ id: z.string().uuid() });
@@ -776,8 +781,8 @@ server.get('/v1/shipments/:id/eta-confidence', async (req, reply) => {
       estimatedDate: prediction.estimatedDate.toISOString(),
       confidence: prediction.confidence,
       confidenceScore: prediction.confidenceScore,
-      weatherFactor: Math.round(prediction.weatherFactor * 100), // As percentage
-      trafficFactor: Math.round(prediction.trafficFactor * 100), // As percentage
+      weatherFactor: toPercentage(prediction.weatherFactor),
+      trafficFactor: toPercentage(prediction.trafficFactor),
       minDays: prediction.minDays,
       maxDays: prediction.maxDays,
       estimatedDays: prediction.estimatedDays,

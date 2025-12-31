@@ -142,6 +142,43 @@ export function predictEtaDate(origin: LatLng, destination: LatLng, carrierName?
   return addBusinessDays(new Date(), days);
 }
 
+// Confidence scoring constants
+const CONFIDENCE_DISTANCE_THRESHOLDS = {
+  VERY_LONG: 5000, // km
+  LONG: 2000,      // km
+  MEDIUM: 1000,    // km
+};
+
+const CONFIDENCE_PENALTIES = {
+  VERY_LONG_DISTANCE: 30,
+  LONG_DISTANCE: 20,
+  MEDIUM_DISTANCE: 10,
+  HIGH_WEATHER: 15,
+  MEDIUM_WEATHER: 8,
+  HIGH_TRAFFIC: 12,
+  MEDIUM_TRAFFIC: 6,
+};
+
+const WEATHER_THRESHOLDS = {
+  HIGH: 0.15,
+  MEDIUM: 0.08,
+};
+
+const TRAFFIC_THRESHOLDS = {
+  HIGH: 0.12,
+  MEDIUM: 0.06,
+};
+
+const CONFIDENCE_MODIFIERS = {
+  PREMIUM_CARRIER_BONUS: 5,
+  ECONOMY_CARRIER_PENALTY: 10,
+};
+
+const ETA_RANGE_MULTIPLIERS = {
+  MIN: 0.8,
+  MAX: 1.2,
+};
+
 export function predictEtaWithConfidence(
   origin: LatLng,
   destination: LatLng,
@@ -163,24 +200,34 @@ export function predictEtaWithConfidence(
   let confidenceScore = 100;
   
   // Distance uncertainty: longer distances = lower confidence
-  if (distance > 5000) confidenceScore -= 30;
-  else if (distance > 2000) confidenceScore -= 20;
-  else if (distance > 1000) confidenceScore -= 10;
+  if (distance > CONFIDENCE_DISTANCE_THRESHOLDS.VERY_LONG) {
+    confidenceScore -= CONFIDENCE_PENALTIES.VERY_LONG_DISTANCE;
+  } else if (distance > CONFIDENCE_DISTANCE_THRESHOLDS.LONG) {
+    confidenceScore -= CONFIDENCE_PENALTIES.LONG_DISTANCE;
+  } else if (distance > CONFIDENCE_DISTANCE_THRESHOLDS.MEDIUM) {
+    confidenceScore -= CONFIDENCE_PENALTIES.MEDIUM_DISTANCE;
+  }
   
   // Weather impact on confidence
-  if (weatherFactor > 0.15) confidenceScore -= 15;
-  else if (weatherFactor > 0.08) confidenceScore -= 8;
+  if (weatherFactor > WEATHER_THRESHOLDS.HIGH) {
+    confidenceScore -= CONFIDENCE_PENALTIES.HIGH_WEATHER;
+  } else if (weatherFactor > WEATHER_THRESHOLDS.MEDIUM) {
+    confidenceScore -= CONFIDENCE_PENALTIES.MEDIUM_WEATHER;
+  }
   
   // Traffic impact on confidence
-  if (trafficFactor > 0.12) confidenceScore -= 12;
-  else if (trafficFactor > 0.06) confidenceScore -= 6;
+  if (trafficFactor > TRAFFIC_THRESHOLDS.HIGH) {
+    confidenceScore -= CONFIDENCE_PENALTIES.HIGH_TRAFFIC;
+  } else if (trafficFactor > TRAFFIC_THRESHOLDS.MEDIUM) {
+    confidenceScore -= CONFIDENCE_PENALTIES.MEDIUM_TRAFFIC;
+  }
   
   // Carrier reliability factor
   const carrier = (carrierName || '').toLowerCase();
   if (/(dhl|fedex|ups)/.test(carrier)) {
-    confidenceScore += 5; // Premium carriers are more reliable
+    confidenceScore += CONFIDENCE_MODIFIERS.PREMIUM_CARRIER_BONUS;
   } else if (/(ecommerce|packet|economy)/.test(carrier)) {
-    confidenceScore -= 10; // Economy carriers less predictable
+    confidenceScore -= CONFIDENCE_MODIFIERS.ECONOMY_CARRIER_PENALTY;
   }
   
   confidenceScore = clamp(confidenceScore, 0, 100);
@@ -193,8 +240,8 @@ export function predictEtaWithConfidence(
   
   // Calculate min/max range with weather/traffic factors
   const totalDelayFactor = weatherFactor + trafficFactor;
-  const minDays = Math.max(1, Math.floor(baseDays * 0.8));
-  const maxDays = Math.ceil(baseDays * (1.2 + totalDelayFactor));
+  const minDays = Math.max(1, Math.floor(baseDays * ETA_RANGE_MULTIPLIERS.MIN));
+  const maxDays = Math.ceil(baseDays * (ETA_RANGE_MULTIPLIERS.MAX + totalDelayFactor));
   
   // Add jitter for final estimate
   const jitterUnit = unitFromHash(seed ?? `${origin.lat},${origin.lng}->${destination.lat},${destination.lng}`, 'eta');
@@ -225,6 +272,32 @@ export type CarrierPickupOption = {
   costEstimate: 'economy' | 'standard' | 'premium';
   recommendation: string;
 };
+
+const RECOMMENDATIONS = {
+  BEST_FAST: 'Best choice for reliable, fast delivery',
+  RELIABLE_VALUE: 'Reliable delivery with good value',
+  BUDGET_SLOW: 'Budget option, but slower delivery',
+  UNPREDICTABLE: 'Less predictable delivery time',
+  STANDARD: 'Standard delivery option',
+};
+
+function generateRecommendation(
+  confidence: EtaConfidence,
+  isExpress: boolean,
+  isEconomy: boolean,
+  estimatedDays: number
+): string {
+  if (confidence === 'high' && isExpress) {
+    return RECOMMENDATIONS.BEST_FAST;
+  } else if (confidence === 'high') {
+    return RECOMMENDATIONS.RELIABLE_VALUE;
+  } else if (isEconomy && estimatedDays > 7) {
+    return RECOMMENDATIONS.BUDGET_SLOW;
+  } else if (confidence === 'low') {
+    return RECOMMENDATIONS.UNPREDICTABLE;
+  }
+  return RECOMMENDATIONS.STANDARD;
+}
 
 export function optimizeCarrierPickup(
   origin: LatLng,
@@ -257,18 +330,12 @@ export function optimizeCarrierPickup(
     const reliabilityScore = prediction.confidenceScore;
     
     // Generate recommendation
-    let recommendation = '';
-    if (prediction.confidence === 'high' && isExpress) {
-      recommendation = 'Best choice for reliable, fast delivery';
-    } else if (prediction.confidence === 'high') {
-      recommendation = 'Reliable delivery with good value';
-    } else if (isEconomy && prediction.estimatedDays > 7) {
-      recommendation = 'Budget option, but slower delivery';
-    } else if (prediction.confidence === 'low') {
-      recommendation = 'Less predictable delivery time';
-    } else {
-      recommendation = 'Standard delivery option';
-    }
+    const recommendation = generateRecommendation(
+      prediction.confidence,
+      isExpress,
+      isEconomy,
+      prediction.estimatedDays
+    );
     
     options.push({
       carrierName,
