@@ -128,3 +128,150 @@ export function predictEtaDate(origin: LatLng, destination: LatLng, carrierName?
   days = Math.max(1, Math.round(days * (1 + jitter)));
   return addBusinessDays(new Date(), days);
 }
+
+/**
+ * Simulates traffic impact based on distance and time.
+ * Returns a multiplier (0.9 - 1.2) representing traffic conditions.
+ */
+function getTrafficMultiplier(distanceKm: number, seed: string): number {
+  const trafficUnit = unitFromHash(seed, 'traffic');
+  
+  // Urban areas (<200km) have more traffic variability
+  if (distanceKm < 200) {
+    return 0.95 + trafficUnit * 0.25; // 0.95 - 1.20
+  }
+  // Medium distances have moderate variability
+  if (distanceKm < 1000) {
+    return 0.97 + trafficUnit * 0.15; // 0.97 - 1.12
+  }
+  // Long distances have minimal traffic impact
+  return 0.98 + trafficUnit * 0.08; // 0.98 - 1.06
+}
+
+/**
+ * Simulates weather impact based on geographic location.
+ * Returns a multiplier (0.95 - 1.15) representing weather conditions.
+ */
+function getWeatherMultiplier(origin: LatLng, destination: LatLng, seed: string): number {
+  const weatherUnit = unitFromHash(seed, 'weather');
+  
+  // Calculate average latitude to determine climate zone
+  const avgLat = Math.abs((origin.lat + destination.lat) / 2);
+  
+  // Higher latitudes (closer to poles) have more weather variability
+  if (avgLat > 50) {
+    return 0.95 + weatherUnit * 0.20; // 0.95 - 1.15 (winter storms, etc.)
+  }
+  if (avgLat > 30) {
+    return 0.97 + weatherUnit * 0.12; // 0.97 - 1.09 (moderate weather)
+  }
+  // Tropical/equatorial regions have less weather impact
+  return 0.98 + weatherUnit * 0.08; // 0.98 - 1.06
+}
+
+/**
+ * Calculates ETA confidence score based on multiple factors.
+ * Returns a confidence percentage (0-100).
+ */
+export function calculateEtaConfidence(
+  origin: LatLng,
+  destination: LatLng,
+  carrierName: string | null | undefined,
+  status: string,
+  distanceKm?: number
+): number {
+  const distance = distanceKm ?? haversineKm(origin, destination);
+  
+  // Base confidence starts at 70%
+  let confidence = 70;
+  
+  // Status-based confidence
+  switch (status) {
+    case 'DELIVERED':
+      return 100; // Already delivered, 100% certain
+    case 'OUT_FOR_DELIVERY':
+      confidence += 20; // Very high confidence when out for delivery
+      break;
+    case 'IN_TRANSIT':
+      confidence += 10; // Good confidence with tracking updates
+      break;
+    case 'CREATED':
+      confidence -= 10; // Lower confidence at start
+      break;
+    default:
+      confidence -= 5;
+  }
+  
+  // Carrier reliability (based on carrier type)
+  const carrier = (carrierName || '').toLowerCase();
+  if (/(fedex|ups|dhl|express)/.test(carrier)) {
+    confidence += 10; // Premium carriers are more reliable
+  } else if (/(usps|post)/.test(carrier)) {
+    confidence += 5; // Standard carriers
+  } else {
+    confidence -= 5; // Unknown carriers have lower confidence
+  }
+  
+  // Distance-based confidence
+  if (distance < 500) {
+    confidence += 5; // Short distances are more predictable
+  } else if (distance > 5000) {
+    confidence -= 10; // Long distances have more variables
+  }
+  
+  // Clamp confidence to 0-100 range
+  return clamp(Math.round(confidence), 0, 100);
+}
+
+/**
+ * Predicts ETA with confidence score and factors (traffic, weather).
+ */
+export function predictEtaWithConfidence(
+  origin: LatLng,
+  destination: LatLng,
+  carrierName?: string | null,
+  status?: string,
+  seed?: string
+): {
+  eta: Date;
+  confidence: number;
+  factors: {
+    traffic: number;
+    weather: number;
+    baselineDays: number;
+    adjustedDays: number;
+  };
+} {
+  const distance = haversineKm(origin, destination);
+  const effectiveSeed = seed ?? `${origin.lat},${origin.lng}->${destination.lat},${destination.lng}`;
+  const effectiveStatus = status ?? 'CREATED';
+  
+  // Calculate baseline days
+  const baselineDays = predictTransitBusinessDays(distance, carrierName);
+  
+  // Apply traffic and weather multipliers
+  const trafficMult = getTrafficMultiplier(distance, effectiveSeed);
+  const weatherMult = getWeatherMultiplier(origin, destination, effectiveSeed);
+  
+  // Combined multiplier with jitter
+  const jitterUnit = unitFromHash(effectiveSeed, 'eta');
+  const jitter = (jitterUnit - 0.5) * 0.4; // -0.2 .. +0.2
+  const totalMult = trafficMult * weatherMult * (1 + jitter);
+  
+  const adjustedDays = Math.max(1, Math.round(baselineDays * totalMult));
+  const eta = addBusinessDays(new Date(), adjustedDays);
+  
+  // Calculate confidence
+  const confidence = calculateEtaConfidence(origin, destination, carrierName, effectiveStatus, distance);
+  
+  return {
+    eta,
+    confidence,
+    factors: {
+      traffic: Math.round(trafficMult * 100) / 100,
+      weather: Math.round(weatherMult * 100) / 100,
+      baselineDays,
+      adjustedDays,
+    },
+  };
+}

@@ -9,7 +9,8 @@ import type { Prisma } from '@prisma/client';
 import { tierForPoints } from './loyalty.js';
 import { guessCarrierFromTrackingNumber, detectCarriers, probeCarriers } from './carrierResolver.js';
 import { aggregateCarriers } from './aggregator.js';
-import { coordsForDestination, coordsForOrigin, interpolateLatLng, progressForStatus, predictEtaDate } from './geo.js';
+import { coordsForDestination, coordsForOrigin, interpolateLatLng, progressForStatus, predictEtaDate, predictEtaWithConfidence } from './geo.js';
+import { optimizePickupTime } from './pickupOptimizer.js';
 import { allowRequest, keyFromReq } from './rateLimit.js';
 import {
   createEmailCode,
@@ -648,32 +649,50 @@ server.get('/v1/shipments', async (req, reply) => {
   });
 
   return reply.send({
-    items: shipments.map((s) => ({
-      id: s.id,
-      label: s.label ?? null,
-      trackingNumber: s.trackingNumber,
-      carrier: s.carrier?.name ?? null,
-      status: s.status,
-      userId: s.userId ?? null,
-      eta: s.eta?.toISOString() ?? null,
-      origin: s.origin ?? null,
-      originLat: s.originLat ?? null,
-      originLng: s.originLng ?? null,
-      destination: s.destination ?? null,
-      destinationLat: s.destinationLat ?? null,
-      destinationLng: s.destinationLng ?? null,
-      currentLat: s.currentLat ?? null,
-      currentLng: s.currentLng ?? null,
-      lastEventAt: s.lastEventAt?.toISOString() ?? null,
-      createdAt: s.createdAt.toISOString(),
-      events: s.events.map((e) => ({
-        id: e.id.toString(),
-        canonicalStatus: e.canonicalStatus,
-        carrierStatus: e.carrierStatus ?? null,
-        location: e.location ?? null,
-        eventTime: e.eventTime.toISOString(),
-      })),
-    })),
+    items: shipments.map((s) => {
+      // Calculate ETA confidence if coordinates are available
+      let etaConfidence = null;
+      if (s.originLat && s.originLng && s.destinationLat && s.destinationLng) {
+        const origin = { lat: s.originLat, lng: s.originLng };
+        const destination = { lat: s.destinationLat, lng: s.destinationLng };
+        const prediction = predictEtaWithConfidence(
+          origin,
+          destination,
+          s.carrier?.name ?? null,
+          s.status,
+          s.trackingNumber
+        );
+        etaConfidence = prediction.confidence;
+      }
+
+      return {
+        id: s.id,
+        label: s.label ?? null,
+        trackingNumber: s.trackingNumber,
+        carrier: s.carrier?.name ?? null,
+        status: s.status,
+        userId: s.userId ?? null,
+        eta: s.eta?.toISOString() ?? null,
+        etaConfidence,
+        origin: s.origin ?? null,
+        originLat: s.originLat ?? null,
+        originLng: s.originLng ?? null,
+        destination: s.destination ?? null,
+        destinationLat: s.destinationLat ?? null,
+        destinationLng: s.destinationLng ?? null,
+        currentLat: s.currentLat ?? null,
+        currentLng: s.currentLng ?? null,
+        lastEventAt: s.lastEventAt?.toISOString() ?? null,
+        createdAt: s.createdAt.toISOString(),
+        events: s.events.map((e) => ({
+          id: e.id.toString(),
+          canonicalStatus: e.canonicalStatus,
+          carrierStatus: e.carrierStatus ?? null,
+          location: e.location ?? null,
+          eventTime: e.eventTime.toISOString(),
+        })),
+      };
+    }),
   });
 });
 
@@ -688,6 +707,21 @@ server.get('/v1/shipments/:id', async (req, reply) => {
 
   if (!shipment) return reply.code(404).send({ error: 'Not found' });
 
+  // Calculate ETA confidence if coordinates are available
+  let etaConfidence = null;
+  if (shipment.originLat && shipment.originLng && shipment.destinationLat && shipment.destinationLng) {
+    const origin = { lat: shipment.originLat, lng: shipment.originLng };
+    const destination = { lat: shipment.destinationLat, lng: shipment.destinationLng };
+    const prediction = predictEtaWithConfidence(
+      origin,
+      destination,
+      shipment.carrier?.name ?? null,
+      shipment.status,
+      shipment.trackingNumber
+    );
+    etaConfidence = prediction.confidence;
+  }
+
   return reply.send({
     id: shipment.id,
     label: shipment.label ?? null,
@@ -695,6 +729,7 @@ server.get('/v1/shipments/:id', async (req, reply) => {
     carrier: shipment.carrier?.name ?? null,
     status: shipment.status,
     eta: shipment.eta?.toISOString() ?? null,
+    etaConfidence,
     origin: shipment.origin ?? null,
     originLat: shipment.originLat ?? null,
     originLng: shipment.originLng ?? null,
@@ -768,6 +803,109 @@ server.post('/v1/loyalty/redeem', async (req, reply) => {
 
   // MVP stub: implement points check + redemption later.
   return reply.send({ redeemed: false });
+});
+
+// New endpoint: Get ETA with confidence score
+server.get('/v1/shipments/:id/eta', async (req, reply) => {
+  const paramsSchema = z.object({ id: z.string().uuid() });
+  const { id } = paramsSchema.parse(req.params);
+  
+  const authUserId = getAuthUserId(req);
+  
+  const shipment = await prisma.shipment.findUnique({
+    where: { id },
+    include: { carrier: true },
+  });
+  
+  if (!shipment) return reply.code(404).send({ ok: false, error: 'Not found' });
+  
+  if (authUserId && shipment.userId && shipment.userId !== authUserId) {
+    return reply.code(403).send({ ok: false, error: 'Forbidden' });
+  }
+  
+  // Get coordinates
+  const origin = { lat: shipment.originLat ?? 35.1495, lng: shipment.originLng ?? -90.049 };
+  const destination = { lat: shipment.destinationLat ?? 40.7128, lng: shipment.destinationLng ?? -74.0060 };
+  
+  // Calculate ETA with confidence
+  const prediction = predictEtaWithConfidence(
+    origin,
+    destination,
+    shipment.carrier?.name ?? null,
+    shipment.status,
+    shipment.trackingNumber
+  );
+  
+  return reply.send({
+    ok: true,
+    shipmentId: id,
+    eta: prediction.eta.toISOString(),
+    confidence: prediction.confidence,
+    factors: {
+      traffic: prediction.factors.traffic,
+      weather: prediction.factors.weather,
+      baselineDays: prediction.factors.baselineDays,
+      adjustedDays: prediction.factors.adjustedDays,
+    },
+  });
+});
+
+// New endpoint: Optimize pickup time across carriers
+server.post('/v1/shipments/optimize-pickup', async (req, reply) => {
+  const bodySchema = z.object({
+    origin: z.object({
+      lat: z.number().min(-90).max(90),
+      lng: z.number().min(-180).max(180),
+    }),
+    destination: z.object({
+      lat: z.number().min(-90).max(90),
+      lng: z.number().min(-180).max(180),
+    }),
+    carriers: z.array(z.string()).min(1).max(10).optional(),
+    preferences: z.object({
+      costWeight: z.number().min(0).max(10).optional(),
+      speedWeight: z.number().min(0).max(10).optional(),
+      reliabilityWeight: z.number().min(0).max(10).optional(),
+    }).optional(),
+  });
+  
+  const body = bodySchema.parse(req.body);
+  
+  // Default carriers if not specified
+  const carriers = body.carriers ?? ['UPS', 'FedEx', 'USPS', 'DHL', 'Amazon'];
+  
+  // Optimize pickup time
+  const result = optimizePickupTime(
+    body.origin,
+    body.destination,
+    carriers,
+    body.preferences
+  );
+  
+  return reply.send({
+    ok: true,
+    recommended: {
+      carrier: result.recommended.carrier,
+      estimatedCost: result.recommended.estimatedCost,
+      estimatedDays: result.recommended.estimatedDays,
+      eta: result.recommended.eta.toISOString(),
+      confidence: result.recommended.confidence,
+      score: result.recommended.score,
+      pickupTimes: result.recommended.pickupTimes,
+      availability: result.recommended.availability,
+    },
+    alternatives: result.alternatives.map((alt) => ({
+      carrier: alt.carrier,
+      estimatedCost: alt.estimatedCost,
+      estimatedDays: alt.estimatedDays,
+      eta: alt.eta.toISOString(),
+      confidence: alt.confidence,
+      score: alt.score,
+      pickupTimes: alt.pickupTimes,
+      availability: alt.availability,
+    })),
+    optimizationFactors: result.optimizationFactors,
+  });
 });
 
 server.post('/v1/connect/email/gmail', async (req, reply) => {

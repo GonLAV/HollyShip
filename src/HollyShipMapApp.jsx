@@ -171,6 +171,13 @@ export default function HollyShipMapApp() {
   const confettiTimerRef = useRef(null);
   const fireworksTimerRef = useRef(null);
 
+  // Pickup optimization modal state
+  const [isPickupModalOpen, setIsPickupModalOpen] = useState(false);
+  const [pickupOrigin, setPickupOrigin] = useState('');
+  const [pickupDestination, setPickupDestination] = useState('');
+  const [pickupOptimizing, setPickupOptimizing] = useState(false);
+  const [pickupResults, setPickupResults] = useState(null);
+
   const totalPoints = loyaltyPoints;
   const isAuthenticated = Boolean(authUser.userId);
 
@@ -307,6 +314,7 @@ export default function HollyShipMapApp() {
           currentLocation: lastLocation,
           destination: s.destination || '—',
           estimatedDelivery: computeEstimatedDelivery(uiStatus, s.eta),
+          etaConfidence: s.etaConfidence ?? null,
           originLat: s.originLat ?? null,
           originLng: s.originLng ?? null,
           destinationLat: s.destinationLat ?? null,
@@ -650,6 +658,45 @@ export default function HollyShipMapApp() {
     }
   }
 
+  async function optimizePickup(e) {
+    if (e) e.preventDefault();
+    if (!pickupOrigin || !pickupDestination) return;
+
+    setPickupOptimizing(true);
+    setPickupResults(null);
+
+    try {
+      // Simple geocoding - in production, use a real geocoding API
+      const originCoords = { lat: 37.7749, lng: -122.4194 }; // Default SF
+      const destCoords = { lat: 40.7128, lng: -74.0060 }; // Default NYC
+
+      const resp = await fetch('/v1/shipments/optimize-pickup', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          origin: originCoords,
+          destination: destCoords,
+          carriers: ['UPS', 'FedEx', 'USPS', 'DHL', 'Amazon'],
+          preferences: {
+            costWeight: 1.0,
+            speedWeight: 1.5,
+            reliabilityWeight: 1.0,
+          },
+        }),
+      });
+
+      if (!resp.ok) throw new Error('Failed to optimize');
+
+      const data = await resp.json();
+      setPickupResults(data);
+    } catch (err) {
+      console.error('Pickup optimization failed:', err);
+    } finally {
+      setPickupOptimizing(false);
+    }
+  }
+
+
   return (
     <div id="app-wrapper">
       <header className="header">
@@ -670,6 +717,15 @@ export default function HollyShipMapApp() {
               </button>
             </div>
           ) : null}
+          <button
+            className="add-tracking-btn"
+            style={{ marginRight: 8 }}
+            onClick={() => setIsPickupModalOpen(true)}
+            disabled={!isAuthenticated}
+            type="button"
+          >
+            <span>🚚 Optimize Pickup</span>
+          </button>
           <button
             className="add-tracking-btn"
             id="add-btn"
@@ -789,6 +845,20 @@ export default function HollyShipMapApp() {
 
                     <div className="eta-info">
                       <strong>Estimated Delivery:</strong> {pkg.estimatedDelivery}
+                      {pkg.etaConfidence !== null && pkg.status !== 'DELIVERED' && (
+                        <div className="confidence-score" style={{ marginTop: 4, fontSize: 13, color: '#666' }}>
+                          <span>Confidence: </span>
+                          <span style={{ 
+                            fontWeight: 600,
+                            color: pkg.etaConfidence >= 80 ? '#18C37E' : pkg.etaConfidence >= 60 ? '#FFA500' : '#FF6347'
+                          }}>
+                            {pkg.etaConfidence}%
+                          </span>
+                          <span style={{ marginLeft: 4 }}>
+                            {pkg.etaConfidence >= 80 ? '🟢' : pkg.etaConfidence >= 60 ? '🟡' : '🔴'}
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     {pkg.status !== 'DELIVERED' ? (
@@ -1036,6 +1106,119 @@ export default function HollyShipMapApp() {
                   </>
                 ) : (
                   <span id="submit-text">Add Tracking</span>
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      {/* Pickup Optimization Modal */}
+      <div className={`modal-overlay ${isPickupModalOpen ? 'active' : ''}`}>
+        <div className="modal-content glass" style={{ maxWidth: 700 }}>
+          <h2 className="modal-header">🚚 Optimize Pickup Time</h2>
+          <p style={{ fontSize: 14, color: '#666', marginBottom: 20 }}>
+            Compare carriers and find the best pickup time based on cost, speed, and reliability.
+          </p>
+          <form onSubmit={optimizePickup}>
+            <div className="form-group">
+              <label className="form-label" htmlFor="pickup-origin-input">
+                Pickup Location
+              </label>
+              <input
+                type="text"
+                id="pickup-origin-input"
+                className="form-input"
+                placeholder="e.g., San Francisco, CA"
+                required
+                value={pickupOrigin}
+                onChange={(e) => setPickupOrigin(e.target.value)}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="pickup-dest-input">
+                Delivery Destination
+              </label>
+              <input
+                type="text"
+                id="pickup-dest-input"
+                className="form-input"
+                placeholder="e.g., New York, NY"
+                required
+                value={pickupDestination}
+                onChange={(e) => setPickupDestination(e.target.value)}
+              />
+            </div>
+
+            {pickupResults && (
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ 
+                  background: 'linear-gradient(135deg, #18C37E 0%, #14A664 100%)',
+                  padding: 16,
+                  borderRadius: 12,
+                  color: 'white',
+                  marginBottom: 16
+                }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>
+                    🏆 Recommended: {pickupResults.recommended.carrier}
+                  </div>
+                  <div style={{ fontSize: 14, opacity: 0.95, marginBottom: 4 }}>
+                    Cost: ${pickupResults.recommended.estimatedCost} • {pickupResults.recommended.estimatedDays} days
+                  </div>
+                  <div style={{ fontSize: 14, opacity: 0.95, marginBottom: 4 }}>
+                    Confidence: {pickupResults.recommended.confidence}% • Score: {pickupResults.recommended.score}
+                  </div>
+                  <div style={{ fontSize: 13, opacity: 0.9, marginTop: 8 }}>
+                    <strong>Pickup Times:</strong> {pickupResults.recommended.pickupTimes.join(', ')}
+                  </div>
+                </div>
+
+                <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>
+                  Alternative Options:
+                </div>
+                {pickupResults.alternatives.map((alt, idx) => (
+                  <div key={idx} style={{
+                    padding: 12,
+                    border: '1px solid #e0e0e0',
+                    borderRadius: 8,
+                    marginBottom: 8,
+                    background: 'white'
+                  }}>
+                    <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                      {alt.carrier}
+                    </div>
+                    <div style={{ fontSize: 13, color: '#666' }}>
+                      ${alt.estimatedCost} • {alt.estimatedDays} days • {alt.confidence}% confidence • Score: {alt.score}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#888', marginTop: 4 }}>
+                      {alt.pickupTimes.slice(0, 3).join(', ')}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => {
+                  setIsPickupModalOpen(false);
+                  setPickupOrigin('');
+                  setPickupDestination('');
+                  setPickupResults(null);
+                }}
+              >
+                Close
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={pickupOptimizing}>
+                {pickupOptimizing ? (
+                  <>
+                    <span className="loading-spinner"></span> Optimizing...
+                  </>
+                ) : (
+                  'Compare Carriers'
                 )}
               </button>
             </div>
