@@ -29,6 +29,16 @@ export default function ShipmentDetailPage() {
   const setSoundEnabled = usePreferencesStore(s => s.setSoundEnabled)
   const respectReducedMotion = usePreferencesStore(s => s.respectReducedMotion)
   const setRespectReducedMotion = usePreferencesStore(s => s.setRespectReducedMotion)
+  
+  // Package notes feature
+  const [packageNotes, setPackageNotes] = useState<string>(() => {
+    try { return localStorage.getItem(`notes:${id}`) || '' } catch { return '' }
+  })
+  
+  const saveNotes = (notes: string) => {
+    setPackageNotes(notes)
+    try { localStorage.setItem(`notes:${id}`, notes) } catch {}
+  }
 
   useEffect(() => {
     if (!id) return
@@ -143,11 +153,136 @@ export default function ShipmentDetailPage() {
     if (!detail) return ''
     return etaMessage(detail.createdAt, expectedDays)
   }, [detail, expectedDays])
+  
+  // Human-readable time remaining
+  const timeRemaining = useMemo(() => {
+    if (!detail?.eta) return null
+    const now = new Date()
+    const eta = new Date(detail.eta)
+    const diffMs = eta.getTime() - now.getTime()
+    
+    if (diffMs < 0) return 'ETA passed'
+    
+    const hours = Math.floor(diffMs / (1000 * 60 * 60))
+    const days = Math.floor(hours / 24)
+    
+    if (days > 1) return `~${days} days`
+    if (days === 1) return '~1 day'
+    if (hours > 1) return `~${hours} hours`
+    if (hours === 1) return '~1 hour'
+    return 'Less than 1 hour'
+  }, [detail?.eta])
+  
+  // Latest event with emoji
+  const latestEventEmoji = useMemo(() => {
+    if (!detail?.events || detail.events.length === 0) return '📦'
+    const latest = detail.events[0]
+    const status = latest.canonicalStatus.toLowerCase()
+    
+    if (status.includes('delivered')) return '✅'
+    if (status.includes('out_for_delivery')) return '🚚'
+    if (status.includes('in_transit')) return '📦'
+    if (status.includes('delayed')) return '⏰'
+    if (status.includes('failure')) return '❌'
+    return '📦'
+  }, [detail?.events])
 
   return (
     <div>
       <p><Link to="/shipments">← Back to Shipments</Link></p>
       <h1>{title}</h1>
+
+      {/* Quick Actions Bar */}
+      {detail && (
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '1rem' }}>
+          <button 
+            className="chip" 
+            onClick={() => {
+              navigator.clipboard.writeText(detail.trackingNumber)
+              show('📋 Tracking number copied!')
+            }}
+            title="Copy tracking number"
+          >
+            📋 Copy Tracking #
+          </button>
+          
+          <button 
+            className="chip" 
+            onClick={() => {
+              const url = window.location.href
+              navigator.clipboard.writeText(url)
+              show('🔗 Link copied! Share with anyone.')
+            }}
+            title="Share this page"
+          >
+            🔗 Share Link
+          </button>
+          
+          <button 
+            className="chip" 
+            onClick={async () => {
+              try {
+                const next = await api.getShipment(id!)
+                setDetail(next)
+                show('✅ Status refreshed!')
+              } catch {
+                show('❌ Failed to refresh')
+              }
+            }}
+            title="Refresh tracking status"
+          >
+            🔄 Refresh
+          </button>
+
+          {detail.status === 'DELIVERED' && (
+            <span className="chip" style={{ background: 'var(--primary)', color: 'white', cursor: 'default' }}>
+              ✓ Delivered
+            </span>
+          )}
+          
+          {detail.status === 'OUT_FOR_DELIVERY' && (
+            <span className="chip" style={{ background: '#ff9500', color: 'white', cursor: 'default' }}>
+              🚚 Out for Delivery
+            </span>
+          )}
+          
+          {detail.status === 'IN_TRANSIT' && (
+            <span className="chip" style={{ background: '#4BA3FF', color: 'white', cursor: 'default' }}>
+              📦 In Transit
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Package Notes Section */}
+      {detail && (
+        <div style={{ marginBottom: '1rem' }}>
+          <details>
+            <summary style={{ cursor: 'pointer', fontWeight: 500 }}>📝 Package Notes {packageNotes && '(saved)'}</summary>
+            <div style={{ marginTop: '0.5rem' }}>
+              <textarea
+                value={packageNotes}
+                onChange={(e) => saveNotes(e.target.value)}
+                placeholder="Add personal notes: What's in this package? Gift for whom? Special instructions?"
+                style={{ 
+                  width: '100%', 
+                  minHeight: '80px', 
+                  padding: '10px', 
+                  borderRadius: '8px', 
+                  border: '1px solid var(--border)',
+                  background: 'var(--bg)',
+                  color: 'inherit',
+                  fontFamily: 'inherit',
+                  fontSize: '14px'
+                }}
+              />
+              <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                💡 Private notes, saved only on this device
+              </p>
+            </div>
+          </details>
+        </div>
+      )}
 
       {loading && <div>Loading…</div>}
       {error && <div className="error" role="alert">{error}</div>}
@@ -218,12 +353,29 @@ export default function ShipmentDetailPage() {
       {detail && (
         <>
           <section className="eta-panel">
-            <h2>ETA tracker</h2>
+            <h2>{latestEventEmoji} Package Status</h2>
+            
+            {detail.eta && timeRemaining && (
+              <div style={{ 
+                padding: '12px', 
+                background: 'var(--primary)', 
+                color: 'white', 
+                borderRadius: '8px', 
+                marginBottom: '1rem',
+                fontSize: '18px',
+                fontWeight: 500,
+                textAlign: 'center'
+              }}>
+                ⏱️ Arriving in {timeRemaining}
+              </div>
+            )}
+            
             {detail.eta && (
               <p>
-                Carrier ETA: {new Date(detail.eta).toLocaleDateString()} ({etaDaysLeft(detail.eta)} day(s) left)
+                📅 Carrier ETA: {new Date(detail.eta).toLocaleDateString()} ({etaDaysLeft(detail.eta)} day(s) left)
               </p>
             )}
+            
             <label>
               Expected business days
               <input
@@ -241,7 +393,7 @@ export default function ShipmentDetailPage() {
             <p className="eta-message">{etaMsg}</p>
             {expectedDays != null && etaMsg.includes('overdue') && (
               <p>
-                <a className="chip" href={supportMailto(detail, expectedDays)} target="_blank" rel="noreferrer">Contact support</a>
+                <a className="chip" href={supportMailto(detail, expectedDays)} target="_blank" rel="noreferrer">📧 Contact support</a>
               </p>
             )}
           </section>
@@ -277,17 +429,80 @@ export default function ShipmentDetailPage() {
 
       {detail && (
         <section>
-          <h2>Events</h2>
-          <ul className="features">
-            {detail.events.map(ev => (
-              <li key={ev.id}>
-                <div><strong>{ev.canonicalStatus}</strong> {ev.carrierStatus ? `· ${ev.carrierStatus}` : ''}</div>
-                <div>{ev.location ?? '—'}</div>
-                <div>{new Date(ev.eventTime).toLocaleString()}</div>
-              </li>
-            ))}
-          </ul>
-          {detail.events.length === 0 && <div>No events yet.</div>}
+          <h2>📍 Package Journey</h2>
+          {detail.events.length > 0 ? (
+            <div style={{ position: 'relative', paddingLeft: '30px' }}>
+              {detail.events.map((ev, idx) => {
+                const isFirst = idx === 0
+                const isLast = idx === detail.events.length - 1
+                const statusEmoji = 
+                  ev.canonicalStatus === 'DELIVERED' ? '✅' :
+                  ev.canonicalStatus === 'OUT_FOR_DELIVERY' ? '🚚' :
+                  ev.canonicalStatus === 'IN_TRANSIT' ? '📦' :
+                  ev.canonicalStatus === 'DELAYED' ? '⏰' :
+                  ev.canonicalStatus === 'FAILURE' ? '❌' : '📍'
+                
+                return (
+                  <div key={ev.id} style={{ 
+                    position: 'relative', 
+                    marginBottom: isLast ? 0 : '24px',
+                    paddingBottom: isLast ? 0 : '8px'
+                  }}>
+                    {/* Timeline dot */}
+                    <div style={{
+                      position: 'absolute',
+                      left: '-30px',
+                      width: '20px',
+                      height: '20px',
+                      borderRadius: '50%',
+                      background: isFirst ? 'var(--primary)' : 'var(--border)',
+                      border: '3px solid var(--bg)',
+                      boxShadow: isFirst ? '0 0 0 3px var(--primary)' : 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '10px'
+                    }}>
+                      {isFirst && '●'}
+                    </div>
+                    
+                    {/* Timeline line */}
+                    {!isLast && (
+                      <div style={{
+                        position: 'absolute',
+                        left: '-21px',
+                        top: '20px',
+                        width: '2px',
+                        height: 'calc(100% + 12px)',
+                        background: 'var(--border)'
+                      }} />
+                    )}
+                    
+                    {/* Event content */}
+                    <div style={{ 
+                      background: isFirst ? 'var(--card)' : 'transparent',
+                      padding: isFirst ? '12px' : '4px 0',
+                      borderRadius: '8px',
+                      border: isFirst ? '1px solid var(--border)' : 'none'
+                    }}>
+                      <div style={{ fontWeight: isFirst ? 600 : 500 }}>
+                        {statusEmoji} <strong>{ev.canonicalStatus}</strong> 
+                        {ev.carrierStatus && ` · ${ev.carrierStatus}`}
+                      </div>
+                      <div style={{ fontSize: '14px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                        📍 {ev.location ?? 'Location not available'}
+                      </div>
+                      <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                        🕐 {new Date(ev.eventTime).toLocaleString()}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div>No tracking events yet. Check back soon!</div>
+          )}
         </section>
       )}
 
