@@ -6,6 +6,8 @@ import { useSessionStore } from '../state/session'
 import { useToast } from '../ui/toaster'
 import { z } from 'zod'
 import { SkeletonCard } from '../ui/Skeleton'
+import { usePackagesStore } from '../state/packages'
+import { celebrate } from '../ui/celebration'
 
 export default function ShipmentsPage() {
   const [items, setItems] = useState<ShipmentSummary[] | null>(null)
@@ -14,6 +16,14 @@ export default function ShipmentsPage() {
   const [limit, setLimit] = useState(20)
   const { userId } = useSessionStore()
   const { show } = useToast()
+  
+  // Package grouping and achievements
+  const { groups, achievements, addGroup, addShipmentToGroup, removeShipmentFromGroup, unlockAchievement } = usePackagesStore()
+  const [showGroups, setShowGroups] = useState(false)
+  const [showAchievements, setShowAchievements] = useState(false)
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
+  const [newGroupName, setNewGroupName] = useState('')
+  const [newGroupEmoji, setNewGroupEmoji] = useState('📦')
 
   const [tn, setTn] = useState('')
   const [label, setLabel] = useState('')
@@ -60,7 +70,12 @@ export default function ShipmentsPage() {
       setLoading(true); setError(null)
       try {
         const res = await api.listShipments({ limit, userId: userId ?? undefined })
-        if (!cancelled) setItems(res.items)
+        if (!cancelled) {
+          setItems(res.items)
+          
+          // Check for achievements
+          checkAchievements(res.items)
+        }
       } catch (e: any) {
         if (!cancelled) setError(e?.message ?? 'Failed to load shipments')
         show('Failed to load shipments')
@@ -71,6 +86,50 @@ export default function ShipmentsPage() {
     run()
     return () => { cancelled = true }
   }, [userId, limit])
+  
+  // Achievement checking logic
+  function checkAchievements(shipments: ShipmentSummary[]) {
+    const currentAchievements = achievements
+    
+    // First Steps - track first package
+    if (shipments.length >= 1 && !currentAchievements.find(a => a.id === 'first-track')?.unlocked) {
+      unlockAchievement('first-track')
+      show('🎯 Achievement Unlocked: First Steps!')
+      celebrate({ style: 'confetti', duration: 2000, sound: false, respectReducedMotion: true })
+    }
+    
+    // Package Master - track 10 packages
+    if (shipments.length >= 10 && !currentAchievements.find(a => a.id === 'package-master')?.unlocked) {
+      unlockAchievement('package-master')
+      show('📦 Achievement Unlocked: Package Master!')
+      celebrate({ style: 'stars', duration: 3000, sound: false, respectReducedMotion: true })
+    }
+    
+    // World Traveler - international shipment
+    const hasInternational = shipments.some(s => 
+      s.carrier?.toLowerCase().includes('international') ||
+      s.carrier?.toLowerCase().includes('dhl') ||
+      s.carrier?.toLowerCase().includes('ups worldwide')
+    )
+    if (hasInternational && !currentAchievements.find(a => a.id === 'world-traveler')?.unlocked) {
+      unlockAchievement('world-traveler')
+      show('🌍 Achievement Unlocked: World Traveler!')
+    }
+    
+    // Carrier Diversity - 5 different carriers
+    const uniqueCarriers = new Set(shipments.map(s => s.carrier).filter(Boolean))
+    if (uniqueCarriers.size >= 5 && !currentAchievements.find(a => a.id === 'diversity')?.unlocked) {
+      unlockAchievement('diversity')
+      show('🎨 Achievement Unlocked: Carrier Diversity!')
+    }
+    
+    // Night Owl - tracking after midnight
+    const now = new Date()
+    if (now.getHours() >= 0 && now.getHours() < 6 && !currentAchievements.find(a => a.id === 'night-owl')?.unlocked) {
+      unlockAchievement('night-owl')
+      show('🦉 Achievement Unlocked: Night Owl!')
+    }
+  }
 
   const schema = z.object({
     trackingNumber: z.string().min(3, 'Tracking number too short'),
@@ -153,6 +212,163 @@ export default function ShipmentsPage() {
   return (
     <div>
       <h1>My Shipments</h1>
+      
+      {/* Quick Stats & Achievements Bar */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '1rem', flexWrap: 'wrap' }}>
+        <button 
+          className="chip"
+          onClick={() => setShowAchievements(!showAchievements)}
+          style={{ background: 'var(--primary)', color: 'white' }}
+        >
+          🏆 Achievements ({achievements.filter(a => a.unlocked).length}/{achievements.length})
+        </button>
+        
+        <button 
+          className="chip"
+          onClick={() => setShowGroups(!showGroups)}
+        >
+          📋 Groups ({groups.length})
+        </button>
+        
+        {items && items.length > 0 && (
+          <>
+            <span className="chip" style={{ cursor: 'default' }}>
+              📦 {items.length} Total
+            </span>
+            <span className="chip" style={{ cursor: 'default' }}>
+              ✅ {items.filter(s => s.status === 'DELIVERED').length} Delivered
+            </span>
+            <span className="chip" style={{ cursor: 'default' }}>
+              🚚 {items.filter(s => s.status === 'IN_TRANSIT' || s.status === 'OUT_FOR_DELIVERY').length} Active
+            </span>
+          </>
+        )}
+      </div>
+      
+      {/* Achievements Panel */}
+      {showAchievements && (
+        <div style={{ 
+          marginBottom: '1.5rem', 
+          padding: '1rem', 
+          border: '1px solid var(--border)', 
+          borderRadius: '8px',
+          background: 'var(--card)'
+        }}>
+          <h3 style={{ marginTop: 0 }}>🏆 Your Achievements</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>
+            {achievements.map(achievement => (
+              <div 
+                key={achievement.id}
+                style={{
+                  padding: '12px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border)',
+                  background: achievement.unlocked ? 'var(--primary)' : 'var(--bg)',
+                  color: achievement.unlocked ? 'white' : 'inherit',
+                  opacity: achievement.unlocked ? 1 : 0.5,
+                }}
+              >
+                <div style={{ fontSize: '24px', marginBottom: '4px' }}>{achievement.emoji}</div>
+                <div style={{ fontWeight: 600, fontSize: '14px' }}>{achievement.name}</div>
+                <div style={{ fontSize: '12px', marginTop: '4px', opacity: 0.9 }}>
+                  {achievement.description}
+                </div>
+                {achievement.unlocked && achievement.unlockedAt && (
+                  <div style={{ fontSize: '11px', marginTop: '6px', opacity: 0.8 }}>
+                    ✓ {new Date(achievement.unlockedAt).toLocaleDateString()}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      
+      {/* Groups Panel */}
+      {showGroups && (
+        <div style={{ 
+          marginBottom: '1.5rem', 
+          padding: '1rem', 
+          border: '1px solid var(--border)', 
+          borderRadius: '8px',
+          background: 'var(--card)'
+        }}>
+          <h3 style={{ marginTop: 0 }}>📋 Package Groups</h3>
+          
+          {/* Create Group Form */}
+          <div style={{ marginBottom: '1rem', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <input
+              type="text"
+              placeholder="Group name (e.g., Christmas Gifts)"
+              value={newGroupName}
+              onChange={(e) => setNewGroupName(e.target.value)}
+              style={{ flex: 1, minWidth: '200px', padding: '8px', borderRadius: '4px', border: '1px solid var(--border)' }}
+            />
+            <select
+              value={newGroupEmoji}
+              onChange={(e) => setNewGroupEmoji(e.target.value)}
+              style={{ padding: '8px', borderRadius: '4px', border: '1px solid var(--border)' }}
+            >
+              <option value="📦">📦 Package</option>
+              <option value="🎁">🎁 Gift</option>
+              <option value="💼">💼 Work</option>
+              <option value="🏠">🏠 Home</option>
+              <option value="🎄">🎄 Christmas</option>
+              <option value="🎂">🎂 Birthday</option>
+              <option value="📚">📚 Books</option>
+              <option value="👕">👕 Clothes</option>
+            </select>
+            <button
+              className="chip"
+              onClick={() => {
+                if (newGroupName.trim()) {
+                  addGroup({
+                    name: newGroupName.trim(),
+                    emoji: newGroupEmoji,
+                    color: '#4BA3FF',
+                    shipmentIds: []
+                  })
+                  setNewGroupName('')
+                  show(`📋 Created group: ${newGroupName}`)
+                  
+                  // Unlock achievement
+                  if (!achievements.find(a => a.id === 'organization-pro')?.unlocked) {
+                    unlockAchievement('organization-pro')
+                    show('📋 Achievement Unlocked: Organization Pro!')
+                  }
+                }
+              }}
+              disabled={!newGroupName.trim()}
+            >
+              ➕ Create Group
+            </button>
+          </div>
+          
+          {/* Groups List */}
+          {groups.length === 0 ? (
+            <p style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
+              No groups yet. Create one to organize your packages!
+            </p>
+          ) : (
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {groups.map(group => (
+                <button
+                  key={group.id}
+                  className="chip"
+                  onClick={() => setSelectedGroup(selectedGroup === group.id ? null : group.id)}
+                  style={{
+                    background: selectedGroup === group.id ? 'var(--primary)' : 'var(--bg)',
+                    color: selectedGroup === group.id ? 'white' : 'inherit',
+                  }}
+                >
+                  {group.emoji} {group.name} ({group.shipmentIds.length})
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      
       <form className="login-form" onSubmit={onResolve} aria-label="Track a package">
         <label>
           Tracking number
