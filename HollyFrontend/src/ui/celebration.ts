@@ -1,4 +1,5 @@
 import confetti from 'canvas-confetti'
+import type { AnimationStyle } from '../state/preferences'
 
 export function burstConfetti() {
   confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } })
@@ -149,7 +150,7 @@ export function shouldReduceMotion(): boolean {
 
 // Main celebration function that respects preferences
 export type CelebrationOptions = {
-  style?: 'fireworks' | 'confetti' | 'stars' | 'rainbow' | 'pride' | 'none'
+  style?: AnimationStyle
   duration?: number
   sound?: boolean
   respectReducedMotion?: boolean

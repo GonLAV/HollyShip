@@ -6,7 +6,7 @@ import MiniMap from '../ui/MiniMap'
 import { burstConfetti, celebrate } from '../ui/celebration'
 import { useToast } from '../ui/toaster'
 import { API_BASE_URL } from '../config'
-import { usePreferencesStore } from '../state/preferences'
+import { usePreferencesStore, type AnimationStyle } from '../state/preferences'
 
 export default function ShipmentDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -173,7 +173,7 @@ export default function ShipmentDetailPage() {
               <span style={{ minWidth: 120 }}>Animation style:</span>
               <select 
                 value={animationStyle} 
-                onChange={(e) => setAnimationStyle(e.target.value as any)}
+                onChange={(e) => setAnimationStyle(e.target.value as AnimationStyle)}
                 style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg)', color: 'inherit' }}
               >
                 <option value="fireworks">🎆 Fireworks</option>

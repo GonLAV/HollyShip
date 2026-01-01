@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-export type AnimationStyle = 'fireworks' | 'confetti' | 'stars' | 'none'
+export type AnimationStyle = 'fireworks' | 'confetti' | 'stars' | 'rainbow' | 'pride' | 'none'
 
 export type PreferencesState = {
   animationsEnabled: boolean
