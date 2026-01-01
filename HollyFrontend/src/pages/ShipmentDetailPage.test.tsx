@@ -64,7 +64,12 @@ describe('ShipmentDetailPage Fireworks Animation', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    usePreferencesStore.setState({ animationsEnabled: true })
+    usePreferencesStore.setState({ 
+      animationsEnabled: true,
+      animationStyle: 'fireworks',
+      soundEnabled: false,
+      respectReducedMotion: true,
+    })
     
     // Setup default API mocks
     vi.mocked(apiClient.api.getShipment).mockResolvedValue(mockShipment)
@@ -89,6 +94,12 @@ describe('ShipmentDetailPage Fireworks Animation', () => {
       const toggle = screen.getByLabelText(/Enable animations/)
       expect(toggle).toBeInTheDocument()
       expect(toggle).toBeChecked() // Default is enabled
+    })
+    
+    // Check for animation style dropdown when animations are enabled
+    await waitFor(() => {
+      const styleSelect = screen.getByDisplayValue('🎆 Fireworks')
+      expect(styleSelect).toBeInTheDocument()
     })
   })
 

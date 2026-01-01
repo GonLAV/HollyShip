@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { ShipmentDetail, ShipmentChainItem } from '../api/types'
 import MiniMap from '../ui/MiniMap'
-import { burstConfetti, fireworks } from '../ui/celebration'
+import { burstConfetti, celebrate } from '../ui/celebration'
 import { useToast } from '../ui/toaster'
 import { API_BASE_URL } from '../config'
 import { usePreferencesStore } from '../state/preferences'
@@ -23,6 +23,12 @@ export default function ShipmentDetailPage() {
   const { show } = useToast()
   const animationsEnabled = usePreferencesStore(s => s.animationsEnabled)
   const setAnimationsEnabled = usePreferencesStore(s => s.setAnimationsEnabled)
+  const animationStyle = usePreferencesStore(s => s.animationStyle)
+  const setAnimationStyle = usePreferencesStore(s => s.setAnimationStyle)
+  const soundEnabled = usePreferencesStore(s => s.soundEnabled)
+  const setSoundEnabled = usePreferencesStore(s => s.setSoundEnabled)
+  const respectReducedMotion = usePreferencesStore(s => s.respectReducedMotion)
+  const setRespectReducedMotion = usePreferencesStore(s => s.setRespectReducedMotion)
 
   useEffect(() => {
     if (!id) return
@@ -85,7 +91,14 @@ export default function ShipmentDetailPage() {
           const isDelivered = next.status?.toLowerCase() === 'delivered' || latestText.includes('delivered')
           if (!wasDelivered && isDelivered) {
             show('Delivered! 🎉')
-            if (animationsEnabled) fireworks(5000)
+            if (animationsEnabled) {
+              celebrate({
+                style: animationStyle,
+                duration: 5000,
+                sound: soundEnabled,
+                respectReducedMotion,
+              })
+            }
           }
         }
       } catch {
@@ -93,7 +106,7 @@ export default function ShipmentDetailPage() {
       }
     }, 10000)
     return () => { cancelled = true; clearInterval(interval) }
-  }, [id, emailUpdates, show, animationsEnabled])
+  }, [id, emailUpdates, show, animationsEnabled, animationStyle, soundEnabled, respectReducedMotion])
 
   useEffect(() => {
     try { localStorage.setItem('emailUpdates', emailUpdates ? '1' : '0') } catch {}
@@ -149,9 +162,58 @@ export default function ShipmentDetailPage() {
       <div className="email-row">
         <label>
           <input type="checkbox" checked={animationsEnabled} onChange={(e) => setAnimationsEnabled(e.target.checked)} />
-          <span style={{ marginLeft: 6 }}>Enable animations (confetti, fireworks)</span>
+          <span style={{ marginLeft: 6 }}>Enable animations</span>
         </label>
       </div>
+
+      {animationsEnabled && (
+        <>
+          <div className="email-row" style={{ marginLeft: 24 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ minWidth: 120 }}>Animation style:</span>
+              <select 
+                value={animationStyle} 
+                onChange={(e) => setAnimationStyle(e.target.value as any)}
+                style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg)', color: 'inherit' }}
+              >
+                <option value="fireworks">🎆 Fireworks</option>
+                <option value="confetti">🎊 Confetti</option>
+                <option value="stars">⭐ Stars</option>
+                <option value="rainbow">🌈 Rainbow</option>
+                <option value="pride">💙 Brand Colors</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="email-row" style={{ marginLeft: 24 }}>
+            <label>
+              <input type="checkbox" checked={soundEnabled} onChange={(e) => setSoundEnabled(e.target.checked)} />
+              <span style={{ marginLeft: 6 }}>🔊 Play sound effect</span>
+            </label>
+          </div>
+
+          <div className="email-row" style={{ marginLeft: 24 }}>
+            <label>
+              <input type="checkbox" checked={respectReducedMotion} onChange={(e) => setRespectReducedMotion(e.target.checked)} />
+              <span style={{ marginLeft: 6 }}>♿ Respect reduced motion preference</span>
+            </label>
+          </div>
+
+          <div className="email-row" style={{ marginLeft: 24 }}>
+            <button 
+              className="chip" 
+              onClick={() => celebrate({ 
+                style: animationStyle, 
+                duration: 3000, 
+                sound: soundEnabled,
+                respectReducedMotion 
+              })}
+            >
+              🎉 Test Animation
+            </button>
+          </div>
+        </>
+      )}
 
       {detail && (
         <>
