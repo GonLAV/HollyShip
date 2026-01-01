@@ -23,17 +23,24 @@ export default function ShipmentsPage() {
     achievements, 
     deliveryPhotos,
     deliveryTimeStats,
+    deliveryStreak,
+    packageRaces,
     addGroup, 
     addShipmentToGroup, 
     removeShipmentFromGroup, 
     unlockAchievement,
     addDeliveryPhoto,
-    recordDeliveryTime 
+    recordDeliveryTime,
+    recordDelivery,
+    startRace,
+    finishRace
   } = usePackagesStore()
   const [showGroups, setShowGroups] = useState(false)
   const [showAchievements, setShowAchievements] = useState(false)
   const [showPhotoGallery, setShowPhotoGallery] = useState(false)
   const [showHeatmap, setShowHeatmap] = useState(false)
+  const [showStreaks, setShowStreaks] = useState(false)
+  const [showRaces, setShowRaces] = useState(false)
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
   const [newGroupName, setNewGroupName] = useState('')
   const [newGroupEmoji, setNewGroupEmoji] = useState('📦')
@@ -103,6 +110,22 @@ export default function ShipmentsPage() {
   // Achievement checking logic
   function checkAchievements(shipments: ShipmentSummary[]) {
     const currentAchievements = achievements
+    
+    // Start races for newly tracked packages (not delivered yet)
+    shipments.forEach(s => {
+      const existingRace = packageRaces.find(r => r.shipmentId === s.id)
+      if (!existingRace && s.status !== 'DELIVERED') {
+        startRace(s.id, s.trackingNumber, s.carrier || 'Unknown', s.label || s.trackingNumber)
+      }
+      
+      // Finish race and record delivery for delivered packages
+      if (s.status === 'DELIVERED' && existingRace && !existingRace.endTime) {
+        finishRace(s.id)
+        // Record delivery for streak tracking (use today's date)
+        const today = new Date().toISOString().split('T')[0]
+        recordDelivery(today)
+      }
+    })
     
     // First Steps - track first package
     if (shipments.length >= 1 && !currentAchievements.find(a => a.id === 'first-track')?.unlocked) {
@@ -255,6 +278,21 @@ export default function ShipmentsPage() {
           onClick={() => setShowHeatmap(!showHeatmap)}
         >
           🗺️ Delivery Heatmap
+        </button>
+        
+        <button 
+          className="chip"
+          onClick={() => setShowStreaks(!showStreaks)}
+          style={{ background: deliveryStreak.current >= 3 ? '#4BA3FF' : undefined, color: deliveryStreak.current >= 3 ? 'white' : undefined }}
+        >
+          🔥 Streak: {deliveryStreak.current} {deliveryStreak.current >= 3 ? 'days' : 'day'}
+        </button>
+        
+        <button 
+          className="chip"
+          onClick={() => setShowRaces(!showRaces)}
+        >
+          🏁 Races ({packageRaces.filter(r => r.endTime).length})
         </button>
         
         {items && items.length > 0 && (
@@ -593,6 +631,222 @@ export default function ShipmentsPage() {
                 }
                 return null
               })()}
+            </>
+          )}
+        </div>
+      )}
+      
+      {/* Delivery Streaks Panel */}
+      {showStreaks && (
+        <div style={{ 
+          marginBottom: '1.5rem', 
+          padding: '1rem', 
+          border: '1px solid var(--border)', 
+          borderRadius: '8px',
+          background: 'var(--card)'
+        }}>
+          <h3 style={{ marginTop: 0 }}>🔥 Delivery Streaks</h3>
+          <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+            Track consecutive days with deliveries and challenge yourself!
+          </p>
+          
+          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+            {/* Current Streak Card */}
+            <div style={{ 
+              flex: '1 1 200px',
+              padding: '1.5rem', 
+              background: deliveryStreak.current >= 3 ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'var(--bg)',
+              color: deliveryStreak.current >= 3 ? 'white' : 'inherit',
+              borderRadius: '12px',
+              textAlign: 'center',
+              border: deliveryStreak.current >= 3 ? 'none' : '2px solid var(--border)'
+            }}>
+              <div style={{ fontSize: '48px', marginBottom: '8px' }}>
+                {deliveryStreak.current >= 7 ? '🔥🔥🔥' : deliveryStreak.current >= 3 ? '🔥🔥' : '🔥'}
+              </div>
+              <div style={{ fontSize: '36px', fontWeight: 'bold', marginBottom: '4px' }}>
+                {deliveryStreak.current}
+              </div>
+              <div style={{ fontSize: '14px', opacity: 0.9 }}>
+                Day{deliveryStreak.current !== 1 ? 's' : ''} Streak
+              </div>
+              {deliveryStreak.lastDeliveryDate && (
+                <div style={{ fontSize: '12px', marginTop: '8px', opacity: 0.8 }}>
+                  Last delivery: {new Date(deliveryStreak.lastDeliveryDate).toLocaleDateString()}
+                </div>
+              )}
+            </div>
+            
+            {/* Longest Streak Card */}
+            <div style={{ 
+              flex: '1 1 200px',
+              padding: '1.5rem', 
+              background: 'var(--bg)',
+              borderRadius: '12px',
+              textAlign: 'center',
+              border: '2px solid var(--border)'
+            }}>
+              <div style={{ fontSize: '48px', marginBottom: '8px' }}>🏆</div>
+              <div style={{ fontSize: '36px', fontWeight: 'bold', marginBottom: '4px', color: 'var(--primary)' }}>
+                {deliveryStreak.longest}
+              </div>
+              <div style={{ fontSize: '14px', color: 'var(--text-muted)' }}>
+                Longest Streak
+              </div>
+            </div>
+          </div>
+          
+          {deliveryStreak.current === 0 && (
+            <p style={{ marginTop: '1rem', color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center' }}>
+              Get your first delivery to start your streak! 📦
+            </p>
+          )}
+          
+          {deliveryStreak.current >= 7 && (
+            <div style={{ 
+              marginTop: '1rem', 
+              padding: '12px', 
+              background: 'var(--primary)', 
+              color: 'white', 
+              borderRadius: '8px',
+              fontSize: '14px',
+              textAlign: 'center'
+            }}>
+              🎉 Amazing! You're on a 7-day streak! Keep it going!
+            </div>
+          )}
+        </div>
+      )}
+      
+      {/* Package Racing Panel */}
+      {showRaces && (
+        <div style={{ 
+          marginBottom: '1.5rem', 
+          padding: '1rem', 
+          border: '1px solid var(--border)', 
+          borderRadius: '8px',
+          background: 'var(--card)'
+        }}>
+          <h3 style={{ marginTop: 0 }}>🏁 Package Racing</h3>
+          <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+            Compare delivery speeds and see which carriers are fastest for you!
+          </p>
+          
+          {packageRaces.length === 0 ? (
+            <p style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
+              No races yet. Packages are automatically entered into races when you track them!
+            </p>
+          ) : (
+            <>
+              {/* Finished Races Leaderboard */}
+              {packageRaces.filter(r => r.endTime && r.rank).length > 0 && (
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <h4 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '1rem' }}>🏆 Fastest Deliveries</h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {packageRaces
+                      .filter(r => r.endTime && r.rank)
+                      .sort((a, b) => (a.rank ?? 999) - (b.rank ?? 999))
+                      .slice(0, 10)
+                      .map(race => (
+                        <div 
+                          key={race.id}
+                          style={{ 
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px',
+                            padding: '12px',
+                            background: race.rank === 1 ? 'linear-gradient(135deg, #FFD700 0%, #FFA500 100%)' : 'var(--bg)',
+                            color: race.rank === 1 ? '#000' : 'inherit',
+                            borderRadius: '8px',
+                            border: race.rank === 1 ? 'none' : '1px solid var(--border)'
+                          }}
+                        >
+                          <div style={{ fontSize: '24px', fontWeight: 'bold', minWidth: '40px' }}>
+                            {race.rank === 1 ? '🥇' : race.rank === 2 ? '🥈' : race.rank === 3 ? '🥉' : `#${race.rank}`}
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 600, marginBottom: '2px' }}>
+                              {race.label || race.trackingNumber}
+                            </div>
+                            <div style={{ fontSize: '12px', opacity: 0.8 }}>
+                              {race.carrier} • {race.duration?.toFixed(1)} hours
+                            </div>
+                          </div>
+                          <div style={{ fontSize: '20px' }}>⚡</div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+              
+              {/* Active Races */}
+              {packageRaces.filter(r => !r.endTime).length > 0 && (
+                <div>
+                  <h4 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '1rem' }}>🚚 Currently Racing</h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {packageRaces
+                      .filter(r => !r.endTime)
+                      .map(race => {
+                        const elapsedHours = (Date.now() - new Date(race.startTime).getTime()) / (1000 * 60 * 60)
+                        return (
+                          <div 
+                            key={race.id}
+                            style={{ 
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '12px',
+                              padding: '12px',
+                              background: 'var(--bg)',
+                              borderRadius: '8px',
+                              border: '1px solid var(--border)'
+                            }}
+                          >
+                            <div style={{ fontSize: '24px' }}>🏃</div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontWeight: 600, marginBottom: '2px' }}>
+                                {race.label || race.trackingNumber}
+                              </div>
+                              <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                                {race.carrier} • {elapsedHours.toFixed(1)} hours elapsed
+                              </div>
+                            </div>
+                            <div style={{ 
+                              fontSize: '12px', 
+                              padding: '4px 8px', 
+                              background: 'var(--primary)', 
+                              color: 'white', 
+                              borderRadius: '4px'
+                            }}>
+                              In Progress
+                            </div>
+                          </div>
+                        )
+                      })}
+                  </div>
+                </div>
+              )}
+              
+              {/* Stats */}
+              {packageRaces.filter(r => r.endTime).length > 0 && (
+                <div style={{ 
+                  marginTop: '1rem', 
+                  padding: '12px', 
+                  background: 'var(--bg)', 
+                  borderRadius: '8px',
+                  fontSize: '14px'
+                }}>
+                  <strong>Racing Stats:</strong> {packageRaces.filter(r => r.endTime).length} completed races
+                  {packageRaces.filter(r => r.endTime).length > 0 && (
+                    <span> • Average: {
+                      (packageRaces
+                        .filter(r => r.duration !== null)
+                        .reduce((sum, r) => sum + (r.duration ?? 0), 0) / 
+                       packageRaces.filter(r => r.duration !== null).length
+                      ).toFixed(1)
+                    } hours</span>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>

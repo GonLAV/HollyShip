@@ -32,11 +32,31 @@ export type DeliveryTimeStats = {
   successRate: number // 0-100
 }
 
+export type DeliveryStreak = {
+  current: number // Current consecutive days with deliveries
+  longest: number // Longest streak ever
+  lastDeliveryDate: string | null // ISO date string (YYYY-MM-DD)
+}
+
+export type PackageRace = {
+  id: string
+  shipmentId: string
+  trackingNumber: string
+  carrier: string
+  label: string
+  startTime: string // ISO timestamp
+  endTime: string | null // ISO timestamp when delivered
+  duration: number | null // in hours
+  rank: number | null // 1 = fastest, higher = slower
+}
+
 export type PackagesState = {
   groups: PackageGroup[]
   achievements: Achievement[]
   deliveryPhotos: DeliveryPhoto[]
   deliveryTimeStats: DeliveryTimeStats[]
+  deliveryStreak: DeliveryStreak
+  packageRaces: PackageRace[]
   addGroup: (group: Omit<PackageGroup, 'id'>) => void
   updateGroup: (id: string, updates: Partial<PackageGroup>) => void
   deleteGroup: (id: string) => void
@@ -45,6 +65,9 @@ export type PackagesState = {
   unlockAchievement: (achievementId: string) => void
   addDeliveryPhoto: (photo: Omit<DeliveryPhoto, 'id'>) => void
   recordDeliveryTime: (hour: number, success: boolean) => void
+  recordDelivery: (date: string) => void // Updates streak
+  startRace: (shipmentId: string, trackingNumber: string, carrier: string, label: string) => void
+  finishRace: (shipmentId: string) => void
 }
 
 // Predefined achievements
@@ -114,6 +137,8 @@ export const usePackagesStore = create<PackagesState>()(
       achievements: DEFAULT_ACHIEVEMENTS,
       deliveryPhotos: [],
       deliveryTimeStats: Array.from({ length: 24 }, (_, i) => ({ hour: i, count: 0, successRate: 100 })),
+      deliveryStreak: { current: 0, longest: 0, lastDeliveryDate: null },
+      packageRaces: [],
       
       addGroup: (group) => set((state) => ({
         groups: [...state.groups, { ...group, id: `group-${Date.now()}` }],
@@ -166,6 +191,76 @@ export const usePackagesStore = create<PackagesState>()(
           hourStat.successRate = Math.round((newSuccesses / newCount) * 100)
         }
         return { deliveryTimeStats: stats }
+      }),
+      
+      recordDelivery: (date) => set((state) => {
+        const { lastDeliveryDate, current, longest } = state.deliveryStreak
+        
+        // If no previous delivery, start streak at 1
+        if (!lastDeliveryDate) {
+          return {
+            deliveryStreak: { current: 1, longest: Math.max(1, longest), lastDeliveryDate: date }
+          }
+        }
+        
+        // Check if this is consecutive day
+        const lastDate = new Date(lastDeliveryDate)
+        const thisDate = new Date(date)
+        const daysDiff = Math.floor((thisDate.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24))
+        
+        if (daysDiff === 1) {
+          // Consecutive day - increment streak
+          const newCurrent = current + 1
+          return {
+            deliveryStreak: {
+              current: newCurrent,
+              longest: Math.max(newCurrent, longest),
+              lastDeliveryDate: date
+            }
+          }
+        } else if (daysDiff === 0) {
+          // Same day - no change
+          return { deliveryStreak: state.deliveryStreak }
+        } else {
+          // Streak broken - reset to 1
+          return {
+            deliveryStreak: { current: 1, longest, lastDeliveryDate: date }
+          }
+        }
+      }),
+      
+      startRace: (shipmentId, trackingNumber, carrier, label) => set((state) => ({
+        packageRaces: [...state.packageRaces, {
+          id: `race-${Date.now()}`,
+          shipmentId,
+          trackingNumber,
+          carrier,
+          label,
+          startTime: new Date().toISOString(),
+          endTime: null,
+          duration: null,
+          rank: null
+        }]
+      })),
+      
+      finishRace: (shipmentId) => set((state) => {
+        const races = [...state.packageRaces]
+        const race = races.find(r => r.shipmentId === shipmentId)
+        if (race && !race.endTime) {
+          const endTime = new Date().toISOString()
+          const startMs = new Date(race.startTime).getTime()
+          const endMs = new Date(endTime).getTime()
+          const durationHours = (endMs - startMs) / (1000 * 60 * 60)
+          
+          race.endTime = endTime
+          race.duration = durationHours
+          
+          // Calculate rank
+          const finishedRaces = races.filter(r => r.endTime && r.duration !== null)
+          finishedRaces.sort((a, b) => (a.duration ?? 0) - (b.duration ?? 0))
+          finishedRaces.forEach((r, i) => { r.rank = i + 1 })
+        }
+        return { packageRaces: races }
       }),
     }),
     { name: 'holly-packages' }
