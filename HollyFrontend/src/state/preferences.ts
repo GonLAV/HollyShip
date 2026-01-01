@@ -12,6 +12,10 @@ export type PreferencesState = {
   setSoundEnabled: (enabled: boolean) => void
   respectReducedMotion: boolean
   setRespectReducedMotion: (respect: boolean) => void
+  giftSurpriseMode: boolean
+  setGiftSurpriseMode: (enabled: boolean) => void
+  showWeatherImpact: boolean
+  setShowWeatherImpact: (enabled: boolean) => void
 }
 
 export const usePreferencesStore = create<PreferencesState>()(
@@ -25,6 +29,10 @@ export const usePreferencesStore = create<PreferencesState>()(
       setSoundEnabled: (enabled) => set({ soundEnabled: enabled }),
       respectReducedMotion: true,
       setRespectReducedMotion: (respect) => set({ respectReducedMotion: respect }),
+      giftSurpriseMode: false,
+      setGiftSurpriseMode: (enabled) => set({ giftSurpriseMode: enabled }),
+      showWeatherImpact: true,
+      setShowWeatherImpact: (enabled) => set({ showWeatherImpact: enabled }),
     }),
     { name: 'holly-preferences' }
   )

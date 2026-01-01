@@ -29,11 +29,38 @@ export default function ShipmentDetailPage() {
   const setSoundEnabled = usePreferencesStore(s => s.setSoundEnabled)
   const respectReducedMotion = usePreferencesStore(s => s.respectReducedMotion)
   const setRespectReducedMotion = usePreferencesStore(s => s.setRespectReducedMotion)
+  const giftSurpriseMode = usePreferencesStore(s => s.giftSurpriseMode)
+  const setGiftSurpriseMode = usePreferencesStore(s => s.setGiftSurpriseMode)
+  const showWeatherImpact = usePreferencesStore(s => s.showWeatherImpact)
+  const setShowWeatherImpact = usePreferencesStore(s => s.setShowWeatherImpact)
   
   // Package notes feature
   const [packageNotes, setPackageNotes] = useState<string>(() => {
     try { return localStorage.getItem(`notes:${id}`) || '' } catch { return '' }
   })
+  
+  // Weather impact simulation (would be from API in production)
+  const [weatherImpact, setWeatherImpact] = useState<{severity: 'none' | 'low' | 'medium' | 'high', description: string} | null>(null)
+  
+  useEffect(() => {
+    // Simulate weather check based on destination
+    if (detail?.destination && showWeatherImpact) {
+      // In production, this would call a weather API
+      const random = Math.random()
+      if (random > 0.7) {
+        setWeatherImpact({
+          severity: random > 0.9 ? 'high' : random > 0.8 ? 'medium' : 'low',
+          description: random > 0.9 ? '❄️ Heavy snow may delay delivery' 
+                     : random > 0.8 ? '🌧️ Rain in delivery area' 
+                     : '☁️ Cloudy conditions'
+        })
+      } else {
+        setWeatherImpact(null)
+      }
+    } else {
+      setWeatherImpact(null)
+    }
+  }, [detail?.destination, showWeatherImpact])
   
   const saveNotes = (notes: string) => {
     setPackageNotes(notes)
@@ -349,9 +376,44 @@ export default function ShipmentDetailPage() {
           </div>
         </>
       )}
+      
+      <div className="email-row">
+        <label>
+          <input type="checkbox" checked={giftSurpriseMode} onChange={(e) => setGiftSurpriseMode(e.target.checked)} />
+          <span style={{ marginLeft: 6 }}>🎁 Gift Surprise Mode (hide sender/contents)</span>
+        </label>
+      </div>
+      
+      <div className="email-row">
+        <label>
+          <input type="checkbox" checked={showWeatherImpact} onChange={(e) => setShowWeatherImpact(e.target.checked)} />
+          <span style={{ marginLeft: 6 }}>🌤️ Show weather impact on delivery</span>
+        </label>
+      </div>
 
       {detail && (
         <>
+          {/* Weather Impact Alert */}
+          {weatherImpact && weatherImpact.severity !== 'none' && (
+            <div style={{
+              marginTop: '1rem',
+              padding: '12px',
+              borderRadius: '8px',
+              border: '1px solid',
+              borderColor: weatherImpact.severity === 'high' ? '#FF4B4B' 
+                         : weatherImpact.severity === 'medium' ? '#FFA94B' 
+                         : '#4BA3FF',
+              background: weatherImpact.severity === 'high' ? 'rgba(255, 75, 75, 0.1)' 
+                        : weatherImpact.severity === 'medium' ? 'rgba(255, 169, 75, 0.1)' 
+                        : 'rgba(75, 163, 255, 0.1)',
+            }}>
+              <strong style={{ display: 'block', marginBottom: '4px' }}>
+                Weather Alert
+              </strong>
+              <span>{weatherImpact.description}</span>
+            </div>
+          )}
+          
           <section className="eta-panel">
             <h2>{latestEventEmoji} Package Status</h2>
             
@@ -404,24 +466,31 @@ export default function ShipmentDetailPage() {
               <div><strong>Carrier:</strong> {detail.carrier ?? 'Unknown'}</div>
               <div><strong>Tracking #:</strong> {detail.trackingNumber} <button className="chip" onClick={() => copyTracking(detail.trackingNumber)}>Copy</button></div>
               <div><strong>ETA:</strong> {detail.eta ? new Date(detail.eta).toLocaleString() : '—'}</div>
-              <div><strong>Route:</strong> {detail.origin ?? 'Unknown'} → {detail.destination ?? 'Unknown'}</div>
+              <div><strong>Route:</strong> {giftSurpriseMode ? '🎁 Surprise!' : `${detail.origin ?? 'Unknown'} → ${detail.destination ?? 'Unknown'}`}</div>
               <div><strong>Created:</strong> {new Date(detail.createdAt).toLocaleString()}</div>
             </div>
             <div>
-              <div><strong>Current pos:</strong> {fmtLatLng(detail.currentLat, detail.currentLng)}</div>
-              <div><strong>Origin coords:</strong> {fmtLatLng(detail.originLat, detail.originLng)}</div>
-              <div><strong>Dest coords:</strong> {fmtLatLng(detail.destinationLat, detail.destinationLng)}</div>
-              <div style={{ marginTop: 8 }}>
-                <MiniMap
-                  width={320}
-                  height={160}
-                  points={[
-                    { lat: detail.originLat, lng: detail.originLng, kind: 'origin' },
-                    { lat: detail.destinationLat, lng: detail.destinationLng, kind: 'destination' },
-                    { lat: detail.currentLat, lng: detail.currentLng, kind: 'current' },
-                  ]}
-                />
-              </div>
+              <div><strong>Current pos:</strong> {giftSurpriseMode ? '🎁 Hidden' : fmtLatLng(detail.currentLat, detail.currentLng)}</div>
+              <div><strong>Origin coords:</strong> {giftSurpriseMode ? '🎁 Hidden' : fmtLatLng(detail.originLat, detail.originLng)}</div>
+              <div><strong>Dest coords:</strong> {giftSurpriseMode ? '🎁 Hidden' : fmtLatLng(detail.destinationLat, detail.destinationLng)}</div>
+              {!giftSurpriseMode && (
+                <div style={{ marginTop: 8 }}>
+                  <MiniMap
+                    width={320}
+                    height={160}
+                    points={[
+                      { lat: detail.originLat, lng: detail.originLng, kind: 'origin' },
+                      { lat: detail.destinationLat, lng: detail.destinationLng, kind: 'destination' },
+                      { lat: detail.currentLat, lng: detail.currentLng, kind: 'current' },
+                    ]}
+                  />
+                </div>
+              )}
+              {giftSurpriseMode && (
+                <div style={{ marginTop: 8, padding: '12px', background: 'var(--primary)', color: 'white', borderRadius: '8px', textAlign: 'center' }}>
+                  🎁 Map hidden to keep the surprise!
+                </div>
+              )}
             </div>
           </div>
         </>
