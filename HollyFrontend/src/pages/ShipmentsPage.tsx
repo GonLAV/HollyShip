@@ -18,9 +18,22 @@ export default function ShipmentsPage() {
   const { show } = useToast()
   
   // Package grouping and achievements
-  const { groups, achievements, addGroup, addShipmentToGroup, removeShipmentFromGroup, unlockAchievement } = usePackagesStore()
+  const { 
+    groups, 
+    achievements, 
+    deliveryPhotos,
+    deliveryTimeStats,
+    addGroup, 
+    addShipmentToGroup, 
+    removeShipmentFromGroup, 
+    unlockAchievement,
+    addDeliveryPhoto,
+    recordDeliveryTime 
+  } = usePackagesStore()
   const [showGroups, setShowGroups] = useState(false)
   const [showAchievements, setShowAchievements] = useState(false)
+  const [showPhotoGallery, setShowPhotoGallery] = useState(false)
+  const [showHeatmap, setShowHeatmap] = useState(false)
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
   const [newGroupName, setNewGroupName] = useState('')
   const [newGroupEmoji, setNewGroupEmoji] = useState('📦')
@@ -230,6 +243,20 @@ export default function ShipmentsPage() {
           📋 Groups ({groups.length})
         </button>
         
+        <button 
+          className="chip"
+          onClick={() => setShowPhotoGallery(!showPhotoGallery)}
+        >
+          📸 Photos ({deliveryPhotos.length})
+        </button>
+        
+        <button 
+          className="chip"
+          onClick={() => setShowHeatmap(!showHeatmap)}
+        >
+          🗺️ Delivery Heatmap
+        </button>
+        
         {items && items.length > 0 && (
           <>
             <span className="chip" style={{ cursor: 'default' }}>
@@ -365,6 +392,208 @@ export default function ShipmentsPage() {
                 </button>
               ))}
             </div>
+          )}
+        </div>
+      )}
+      
+      {/* Photo Gallery Panel */}
+      {showPhotoGallery && (
+        <div style={{ 
+          marginBottom: '1.5rem', 
+          padding: '1rem', 
+          border: '1px solid var(--border)', 
+          borderRadius: '8px',
+          background: 'var(--card)'
+        }}>
+          <h3 style={{ marginTop: 0 }}>📸 Delivery Photo Gallery</h3>
+          
+          {deliveryPhotos.length === 0 ? (
+            <div>
+              <p style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                No delivery photos yet. Photos will be automatically saved when packages are delivered with proof-of-delivery images.
+              </p>
+              <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>
+                💡 Tip: Enable carrier photo delivery notifications to collect delivery photos automatically!
+              </p>
+            </div>
+          ) : (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>
+                {deliveryPhotos.slice(0, 12).map(photo => (
+                  <div 
+                    key={photo.id}
+                    style={{
+                      borderRadius: '8px',
+                      border: '1px solid var(--border)',
+                      overflow: 'hidden',
+                      background: 'var(--bg)',
+                    }}
+                  >
+                    <div style={{ 
+                      height: '150px', 
+                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'white',
+                      fontSize: '48px'
+                    }}>
+                      📦
+                    </div>
+                    <div style={{ padding: '8px', fontSize: '12px' }}>
+                      <div style={{ fontWeight: 600, marginBottom: '4px' }}>
+                        {new Date(photo.timestamp).toLocaleDateString()}
+                      </div>
+                      {photo.location && (
+                        <div style={{ color: 'var(--text-muted)' }}>
+                          📍 {photo.location}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {deliveryPhotos.length > 12 && (
+                <p style={{ marginTop: '1rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  Showing 12 of {deliveryPhotos.length} photos
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      )}
+      
+      {/* Delivery Heatmap Panel */}
+      {showHeatmap && (
+        <div style={{ 
+          marginBottom: '1.5rem', 
+          padding: '1rem', 
+          border: '1px solid var(--border)', 
+          borderRadius: '8px',
+          background: 'var(--card)'
+        }}>
+          <h3 style={{ marginTop: 0 }}>🗺️ Delivery Time Heatmap</h3>
+          <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+            Best and worst times for deliveries in your area based on your package history
+          </p>
+          
+          {deliveryTimeStats.every(s => s.count === 0) ? (
+            <p style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
+              No delivery data yet. Data will be collected automatically as packages are delivered.
+            </p>
+          ) : (
+            <>
+              {/* Time of day sections */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <h4 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '8px' }}>Morning (6 AM - 12 PM)</h4>
+                <div style={{ display: 'flex', gap: '4px', marginBottom: '4px' }}>
+                  {deliveryTimeStats.slice(6, 12).map(stat => (
+                    <div key={stat.hour} style={{ flex: 1, textAlign: 'center' }}>
+                      <div style={{ 
+                        height: `${Math.max(20, stat.count * 10)}px`,
+                        background: stat.count > 0 
+                          ? stat.successRate > 80 ? '#4BA3FF' 
+                          : stat.successRate > 50 ? '#FFA94B' 
+                          : '#FF4B4B'
+                          : 'var(--border)',
+                        borderRadius: '4px 4px 0 0',
+                        marginBottom: '4px'
+                      }} />
+                      <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                        {stat.hour}h
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              
+              <div style={{ marginBottom: '1.5rem' }}>
+                <h4 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '8px' }}>Afternoon (12 PM - 6 PM)</h4>
+                <div style={{ display: 'flex', gap: '4px', marginBottom: '4px' }}>
+                  {deliveryTimeStats.slice(12, 18).map(stat => (
+                    <div key={stat.hour} style={{ flex: 1, textAlign: 'center' }}>
+                      <div style={{ 
+                        height: `${Math.max(20, stat.count * 10)}px`,
+                        background: stat.count > 0 
+                          ? stat.successRate > 80 ? '#4BA3FF' 
+                          : stat.successRate > 50 ? '#FFA94B' 
+                          : '#FF4B4B'
+                          : 'var(--border)',
+                        borderRadius: '4px 4px 0 0',
+                        marginBottom: '4px'
+                      }} />
+                      <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                        {stat.hour}h
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              
+              <div>
+                <h4 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '8px' }}>Evening (6 PM - 12 AM)</h4>
+                <div style={{ display: 'flex', gap: '4px', marginBottom: '4px' }}>
+                  {deliveryTimeStats.slice(18, 24).map(stat => (
+                    <div key={stat.hour} style={{ flex: 1, textAlign: 'center' }}>
+                      <div style={{ 
+                        height: `${Math.max(20, stat.count * 10)}px`,
+                        background: stat.count > 0 
+                          ? stat.successRate > 80 ? '#4BA3FF' 
+                          : stat.successRate > 50 ? '#FFA94B' 
+                          : '#FF4B4B'
+                          : 'var(--border)',
+                        borderRadius: '4px 4px 0 0',
+                        marginBottom: '4px'
+                      }} />
+                      <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                        {stat.hour}h
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              
+              {/* Legend */}
+              <div style={{ marginTop: '1rem', display: 'flex', gap: '12px', fontSize: '12px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <div style={{ width: '12px', height: '12px', background: '#4BA3FF', borderRadius: '2px' }} />
+                  <span>High success (80%+)</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <div style={{ width: '12px', height: '12px', background: '#FFA94B', borderRadius: '2px' }} />
+                  <span>Medium (50-80%)</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <div style={{ width: '12px', height: '12px', background: '#FF4B4B', borderRadius: '2px' }} />
+                  <span>Low (&lt;50%)</span>
+                </div>
+              </div>
+              
+              {/* Best times recommendation */}
+              {(() => {
+                const bestHours = deliveryTimeStats
+                  .filter(s => s.count > 0)
+                  .sort((a, b) => b.successRate - a.successRate)
+                  .slice(0, 3)
+                
+                if (bestHours.length > 0) {
+                  return (
+                    <div style={{ 
+                      marginTop: '1rem', 
+                      padding: '12px', 
+                      background: 'var(--primary)', 
+                      color: 'white', 
+                      borderRadius: '8px',
+                      fontSize: '14px'
+                    }}>
+                      💡 <strong>Best delivery times:</strong> {bestHours.map(h => `${h.hour}:00`).join(', ')} 
+                      ({Math.round(bestHours[0].successRate)}% success rate)
+                    </div>
+                  )
+                }
+                return null
+              })()}
+            </>
           )}
         </div>
       )}

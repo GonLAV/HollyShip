@@ -18,15 +18,33 @@ export type Achievement = {
   unlockedAt?: string
 }
 
+export type DeliveryPhoto = {
+  id: string
+  shipmentId: string
+  imageUrl: string
+  timestamp: string
+  location?: string
+}
+
+export type DeliveryTimeStats = {
+  hour: number // 0-23
+  count: number
+  successRate: number // 0-100
+}
+
 export type PackagesState = {
   groups: PackageGroup[]
   achievements: Achievement[]
+  deliveryPhotos: DeliveryPhoto[]
+  deliveryTimeStats: DeliveryTimeStats[]
   addGroup: (group: Omit<PackageGroup, 'id'>) => void
   updateGroup: (id: string, updates: Partial<PackageGroup>) => void
   deleteGroup: (id: string) => void
   addShipmentToGroup: (groupId: string, shipmentId: string) => void
   removeShipmentFromGroup: (groupId: string, shipmentId: string) => void
   unlockAchievement: (achievementId: string) => void
+  addDeliveryPhoto: (photo: Omit<DeliveryPhoto, 'id'>) => void
+  recordDeliveryTime: (hour: number, success: boolean) => void
 }
 
 // Predefined achievements
@@ -94,6 +112,8 @@ export const usePackagesStore = create<PackagesState>()(
     (set) => ({
       groups: [],
       achievements: DEFAULT_ACHIEVEMENTS,
+      deliveryPhotos: [],
+      deliveryTimeStats: Array.from({ length: 24 }, (_, i) => ({ hour: i, count: 0, successRate: 100 })),
       
       addGroup: (group) => set((state) => ({
         groups: [...state.groups, { ...group, id: `group-${Date.now()}` }],
@@ -130,6 +150,23 @@ export const usePackagesStore = create<PackagesState>()(
             : a
         ),
       })),
+      
+      addDeliveryPhoto: (photo) => set((state) => ({
+        deliveryPhotos: [...state.deliveryPhotos, { ...photo, id: `photo-${Date.now()}` }],
+      })),
+      
+      recordDeliveryTime: (hour, success) => set((state) => {
+        const stats = [...state.deliveryTimeStats]
+        const hourStat = stats.find(s => s.hour === hour)
+        if (hourStat) {
+          const newCount = hourStat.count + 1
+          const oldSuccesses = Math.round((hourStat.successRate / 100) * hourStat.count)
+          const newSuccesses = oldSuccesses + (success ? 1 : 0)
+          hourStat.count = newCount
+          hourStat.successRate = Math.round((newSuccesses / newCount) * 100)
+        }
+        return { deliveryTimeStats: stats }
+      }),
     }),
     { name: 'holly-packages' }
   )
