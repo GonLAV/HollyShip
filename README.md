@@ -121,6 +121,8 @@ All colors meet WCAG AA contrast requirements.
 - `POST /v1/shipments/resolve` - Create shipment
 - `GET /v1/shipments/{id}` - Get details
 - `POST /v1/webhooks/tracking` - Receive updates
+- `PATCH /v1/shipments/{id}/delivery-notes` - Update delivery notes
+- `POST /v1/shipments/{id}/calculate-carbon` - Calculate carbon footprint
 
 ### Carriers
 - `GET /v1/carriers/detect` - Detect from tracking number
@@ -138,6 +140,24 @@ All colors meet WCAG AA contrast requirements.
 ### Email Integration
 - `POST /v1/connect/email/gmail` - Gmail OAuth
 - `POST /v1/connect/email/outlook` - Outlook OAuth
+
+### Saved Addresses
+- `GET /v1/users/{userId}/addresses` - Get all saved addresses
+- `POST /v1/users/{userId}/addresses` - Create saved address
+- `PATCH /v1/users/{userId}/addresses/{addressId}` - Update address
+- `DELETE /v1/users/{userId}/addresses/{addressId}` - Delete address
+
+### Delivery Preferences
+- `GET /v1/users/{userId}/delivery-preferences` - Get preferences
+- `PATCH /v1/users/{userId}/delivery-preferences` - Update preferences
+
+### Carbon Footprint
+- `GET /v1/users/{userId}/carbon-stats` - Get carbon statistics
+
+### Delivery Photos
+- `POST /v1/shipments/{id}/photos` - Upload delivery photo
+- `GET /v1/shipments/{id}/photos` - Get all photos
+- `DELETE /v1/shipments/{shipmentId}/photos/{photoId}` - Delete photo
 
 ### Privacy
 - `GET /v1/me/export` - Export data
@@ -221,13 +241,13 @@ MIT License - see LICENSE file for details
 ## 10 engaging features to add
 1. Real-time tracking timeline with map and status history.
 2. Smart ETA predictions that adjust based on carrier performance and weather.
-3. Saved addresses with autofill and nickname support.
+3. ✅ **Saved addresses with autofill and nickname support.** (IMPLEMENTED)
 4. Rewards and streaks for on-time pickups and eco-friendly delivery choices.
 5. In-app chat with support, including quick canned responses for common issues.
-6. Flexible delivery controls: pause, reschedule, or redirect mid-route when allowed.
+6. ✅ **Flexible delivery controls: pause, reschedule, or redirect mid-route when allowed.** (IMPLEMENTED - preferences API)
 7. Locker or pickup-point selection with availability shown in real time.
-8. Carbon footprint insights per shipment with optional offsets.
-9. Photo confirmation on delivery plus delivery notes for drivers.
+8. ✅ **Carbon footprint insights per shipment with optional offsets.** (IMPLEMENTED)
+9. ✅ **Photo confirmation on delivery plus delivery notes for drivers.** (IMPLEMENTED)
 10. Multi-carrier price and speed comparison before booking.
 
 ## Build & run (local)
