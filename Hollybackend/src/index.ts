@@ -1333,6 +1333,9 @@ setInterval(async () => {
 
 // Get all saved addresses for a user
 server.get('/v1/users/:userId/addresses', async (req, reply) => {
+  if (!allowRequest(keyFromReq(req, 'rl:addresses:get'), 120, 2)) {
+    return reply.code(429).send({ ok: false, error: 'Too many requests' });
+  }
   const { userId } = z.object({ userId: z.string() }).parse(req.params);
   const authUserId = requireAuthUserId(req, reply);
   if (!authUserId || authUserId !== userId) return;
@@ -1347,6 +1350,9 @@ server.get('/v1/users/:userId/addresses', async (req, reply) => {
 
 // Create a new saved address
 server.post('/v1/users/:userId/addresses', async (req, reply) => {
+  if (!allowRequest(keyFromReq(req, 'rl:addresses:create'), 60, 1)) {
+    return reply.code(429).send({ ok: false, error: 'Too many requests' });
+  }
   const { userId } = z.object({ userId: z.string() }).parse(req.params);
   const authUserId = requireAuthUserId(req, reply);
   if (!authUserId || authUserId !== userId) return;
@@ -1383,6 +1389,9 @@ server.post('/v1/users/:userId/addresses', async (req, reply) => {
 
 // Update a saved address
 server.patch('/v1/users/:userId/addresses/:addressId', async (req, reply) => {
+  if (!allowRequest(keyFromReq(req, 'rl:addresses:update'), 60, 1)) {
+    return reply.code(429).send({ ok: false, error: 'Too many requests' });
+  }
   const { userId, addressId } = z.object({ 
     userId: z.string(), 
     addressId: z.string() 
@@ -1423,6 +1432,9 @@ server.patch('/v1/users/:userId/addresses/:addressId', async (req, reply) => {
 
 // Delete a saved address
 server.delete('/v1/users/:userId/addresses/:addressId', async (req, reply) => {
+  if (!allowRequest(keyFromReq(req, 'rl:addresses:delete'), 60, 1)) {
+    return reply.code(429).send({ ok: false, error: 'Too many requests' });
+  }
   const { userId, addressId } = z.object({ 
     userId: z.string(), 
     addressId: z.string() 
@@ -1444,6 +1456,9 @@ server.delete('/v1/users/:userId/addresses/:addressId', async (req, reply) => {
 
 // Get user's delivery preferences
 server.get('/v1/users/:userId/delivery-preferences', async (req, reply) => {
+  if (!allowRequest(keyFromReq(req, 'rl:prefs:get'), 120, 2)) {
+    return reply.code(429).send({ ok: false, error: 'Too many requests' });
+  }
   const { userId } = z.object({ userId: z.string() }).parse(req.params);
   const authUserId = requireAuthUserId(req, reply);
   if (!authUserId || authUserId !== userId) return;
@@ -1464,6 +1479,9 @@ server.get('/v1/users/:userId/delivery-preferences', async (req, reply) => {
 
 // Update delivery preferences
 server.patch('/v1/users/:userId/delivery-preferences', async (req, reply) => {
+  if (!allowRequest(keyFromReq(req, 'rl:prefs:update'), 60, 1)) {
+    return reply.code(429).send({ ok: false, error: 'Too many requests' });
+  }
   const { userId } = z.object({ userId: z.string() }).parse(req.params);
   const authUserId = requireAuthUserId(req, reply);
   if (!authUserId || authUserId !== userId) return;
@@ -1548,6 +1566,9 @@ server.post('/v1/shipments/:id/calculate-carbon', async (req, reply) => {
 
 // Get carbon footprint statistics for a user
 server.get('/v1/users/:userId/carbon-stats', async (req, reply) => {
+  if (!allowRequest(keyFromReq(req, 'rl:carbon:stats'), 120, 2)) {
+    return reply.code(429).send({ ok: false, error: 'Too many requests' });
+  }
   const { userId } = z.object({ userId: z.string() }).parse(req.params);
   const authUserId = requireAuthUserId(req, reply);
   if (!authUserId || authUserId !== userId) return;
