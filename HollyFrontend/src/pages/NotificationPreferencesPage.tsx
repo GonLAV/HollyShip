@@ -207,7 +207,7 @@ export default function NotificationPreferencesPage() {
         </section>
 
         <div className="form-actions">
-          <button type="submit" className="btn btn-primary" disabled={saving || !enabled}>
+          <button type="submit" className="btn btn-primary" disabled={saving}>
             {saving ? 'Saving...' : 'Save Preferences'}
           </button>
           <button type="button" className="btn btn-secondary" onClick={handleReset} disabled={saving}>

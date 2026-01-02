@@ -36,6 +36,7 @@ export default function App() {
           <div className="spacer" />
           <NavLink to="/" end><NavLabel k="features" /></NavLink>
           <NavLink to="/shipments"><NavLabel k="shipments" /></NavLink>
+          <NavLink to="/notifications"><NavLabel k="notifications" /></NavLink>
           <NavLink to="/starters"><NavLabel k="starters" /></NavLink>
           <NavLink to="/about"><NavLabel k="about" /></NavLink>
           <button className="chip" aria-label="Toggle theme" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
