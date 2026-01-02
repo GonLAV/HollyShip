@@ -1411,7 +1411,10 @@ server.patch('/v1/users/:userId/addresses/:addressId', async (req, reply) => {
   }
 
   const address = await prisma.savedAddress.update({
-    where: { id: addressId },
+    where: { 
+      id: addressId,
+      userId: userId, // Ensure the address belongs to the user
+    },
     data: body,
   });
 
@@ -1428,7 +1431,10 @@ server.delete('/v1/users/:userId/addresses/:addressId', async (req, reply) => {
   if (!authUserId || authUserId !== userId) return;
 
   await prisma.savedAddress.delete({
-    where: { id: addressId },
+    where: { 
+      id: addressId,
+      userId: userId, // Ensure the address belongs to the user
+    },
   });
 
   return reply.send({ ok: true, deleted: true });
@@ -1584,12 +1590,15 @@ server.post('/v1/shipments/:id/photos', async (req, reply) => {
     metadata: z.record(z.unknown()).optional(),
   }).parse(req.body);
 
+  // Get authenticated user if available
+  const authUserId = getAuthUserId(req);
+
   const photo = await prisma.deliveryPhoto.create({
     data: {
       shipmentId: id,
       photoUrl: body.photoUrl,
       photoType: body.photoType,
-      uploadedBy: 'user', // In a real app, this would be the authenticated user ID
+      uploadedBy: authUserId ?? 'anonymous',
       metadata: body.metadata as Prisma.InputJsonValue | undefined,
     },
   });
@@ -1615,6 +1624,18 @@ server.delete('/v1/shipments/:shipmentId/photos/:photoId', async (req, reply) =>
     shipmentId: z.string(),
     photoId: z.string() 
   }).parse(req.params);
+
+  // Verify the photo exists and belongs to the specified shipment
+  const photo = await prisma.deliveryPhoto.findFirst({
+    where: { 
+      id: photoId,
+      shipmentId: shipmentId,
+    },
+  });
+
+  if (!photo) {
+    return reply.code(404).send({ ok: false, error: 'Photo not found' });
+  }
 
   await prisma.deliveryPhoto.delete({
     where: { id: photoId },
