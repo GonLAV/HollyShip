@@ -1,0 +1,75 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'Hollybackend/**'
+      - '.github/workflows/backend-ci.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'Hollybackend/**'
+      - '.github/workflows/backend-ci.yml'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Hollybackend
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: hollyship
+          POSTGRES_PASSWORD: hollyship
+          POSTGRES_DB: hollyship_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: Hollybackend/package-lock.json
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Generate Prisma Client
+        run: npx prisma generate
+        env:
+          DATABASE_URL: postgresql://hollyship:hollyship@localhost:5432/hollyship_test?schema=public
+      
+      - name: Run database migrations
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://hollyship:hollyship@localhost:5432/hollyship_test?schema=public
+      
+      - name: Build
+        run: npm run build --if-present
+      
+      - name: Run tests
+        run: npm test
+        env:
+          DATABASE_URL: postgresql://hollyship:hollyship@localhost:5432/hollyship_test?schema=public
+      
+      - name: Run CodeQL Analysis
+        uses: github/codeql-action/init@v3
+        with:
+          languages: typescript
+      
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
