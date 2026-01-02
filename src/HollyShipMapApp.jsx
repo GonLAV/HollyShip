@@ -171,6 +171,26 @@ export default function HollyShipMapApp() {
   const confettiTimerRef = useRef(null);
   const fireworksTimerRef = useRef(null);
 
+  // Pickup optimization modal state
+  const [isPickupModalOpen, setIsPickupModalOpen] = useState(false);
+  const [pickupOrigin, setPickupOrigin] = useState('');
+  const [pickupDestination, setPickupDestination] = useState('');
+  const [pickupOptimizing, setPickupOptimizing] = useState(false);
+  const [pickupResults, setPickupResults] = useState(null);
+
+  // Delivery modification modal state
+  const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false);
+  const [selectedShipmentForDelivery, setSelectedShipmentForDelivery] = useState(null);
+  const [newDeliveryTime, setNewDeliveryTime] = useState('');
+  const [newDestination, setNewDestination] = useState('');
+  const [newDeliveryNotes, setNewDeliveryNotes] = useState('');
+  const [isUpdatingDelivery, setIsUpdatingDelivery] = useState(false);
+
+  // Delivery photos modal state
+  const [isPhotosModalOpen, setIsPhotosModalOpen] = useState(false);
+  const [selectedShipmentForPhotos, setSelectedShipmentForPhotos] = useState(null);
+  const [deliveryPhotos, setDeliveryPhotos] = useState([]);
+
   const totalPoints = loyaltyPoints;
   const isAuthenticated = Boolean(authUser.userId);
 
@@ -307,6 +327,7 @@ export default function HollyShipMapApp() {
           currentLocation: lastLocation,
           destination: s.destination || '—',
           estimatedDelivery: computeEstimatedDelivery(uiStatus, s.eta),
+          etaConfidence: s.etaConfidence ?? null,
           originLat: s.originLat ?? null,
           originLng: s.originLng ?? null,
           destinationLat: s.destinationLat ?? null,
@@ -650,6 +671,97 @@ export default function HollyShipMapApp() {
     }
   }
 
+  async function optimizePickup(e) {
+    if (e) e.preventDefault();
+    if (!pickupOrigin || !pickupDestination) return;
+
+    setPickupOptimizing(true);
+    setPickupResults(null);
+
+    try {
+      // MVP: Using fixed coordinates for demo. In production, integrate a geocoding API
+      // (Google Maps Geocoding, Mapbox, or similar) to convert city names to coordinates.
+      // For now, San Francisco and New York serve as representative examples.
+      const originCoords = { lat: 37.7749, lng: -122.4194 }; // San Francisco, CA
+      const destCoords = { lat: 40.7128, lng: -74.0060 }; // New York, NY
+
+      const resp = await fetch('/v1/shipments/optimize-pickup', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          origin: originCoords,
+          destination: destCoords,
+          carriers: ['UPS', 'FedEx', 'USPS', 'DHL', 'Amazon'],
+          preferences: {
+            costWeight: 1.0,
+            speedWeight: 1.5,
+            reliabilityWeight: 1.0,
+          },
+        }),
+      });
+
+      if (!resp.ok) throw new Error('Failed to optimize');
+
+      const data = await resp.json();
+      setPickupResults(data);
+    } catch (err) {
+      console.error('Pickup optimization failed:', err);
+    } finally {
+      setPickupOptimizing(false);
+    }
+  }
+
+  async function openDeliveryModal(pkg) {
+    setSelectedShipmentForDelivery(pkg);
+    setNewDeliveryTime('');
+    setNewDestination(pkg.destination || '');
+    setNewDeliveryNotes(pkg.deliveryNotes || '');
+    setIsDeliveryModalOpen(true);
+  }
+
+  async function updateDelivery(e) {
+    if (e) e.preventDefault();
+    if (!selectedShipmentForDelivery) return;
+
+    setIsUpdatingDelivery(true);
+    try {
+      const resp = await apiFetch(`/v1/shipments/${selectedShipmentForDelivery.__backendId}/delivery`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          ...(newDeliveryTime ? { requestedDeliveryTime: new Date(newDeliveryTime).toISOString() } : {}),
+          ...(newDestination ? { destination: newDestination } : {}),
+          ...(newDeliveryNotes ? { deliveryNotes: newDeliveryNotes } : {}),
+        }),
+      });
+
+      if (!resp.ok) throw new Error('Failed to update delivery');
+
+      await fetchPackages();
+      setIsDeliveryModalOpen(false);
+    } catch (err) {
+      console.error('Delivery update failed:', err);
+      alert('Failed to update delivery details. The carrier may not support changes.');
+    } finally {
+      setIsUpdatingDelivery(false);
+    }
+  }
+
+  async function openPhotosModal(pkg) {
+    setSelectedShipmentForPhotos(pkg);
+    setIsPhotosModalOpen(true);
+    
+    try {
+      const resp = await apiFetch(`/v1/shipments/${pkg.__backendId}/delivery-photos`);
+      if (resp.ok) {
+        const data = await resp.json();
+        setDeliveryPhotos(data.photos || []);
+      }
+    } catch (err) {
+      console.error('Failed to load photos:', err);
+    }
+  }
+
   return (
     <div id="app-wrapper">
       <header className="header">
@@ -670,6 +782,15 @@ export default function HollyShipMapApp() {
               </button>
             </div>
           ) : null}
+          <button
+            className="add-tracking-btn"
+            style={{ marginRight: 8 }}
+            onClick={() => setIsPickupModalOpen(true)}
+            disabled={!isAuthenticated}
+            type="button"
+          >
+            <span>🚚 Optimize Pickup</span>
+          </button>
           <button
             className="add-tracking-btn"
             id="add-btn"
@@ -789,21 +910,66 @@ export default function HollyShipMapApp() {
 
                     <div className="eta-info">
                       <strong>Estimated Delivery:</strong> {pkg.estimatedDelivery}
+                      {pkg.etaConfidence !== null && pkg.status !== 'DELIVERED' && (
+                        <div className="confidence-score" style={{ marginTop: 4, fontSize: 13, color: '#666' }}>
+                          <span>Confidence: </span>
+                          <span style={{ 
+                            fontWeight: 600,
+                            color: pkg.etaConfidence >= 80 ? '#18C37E' : pkg.etaConfidence >= 60 ? '#FFA500' : '#FF6347'
+                          }}>
+                            {pkg.etaConfidence}%
+                          </span>
+                          <span style={{ marginLeft: 4 }}>
+                            {pkg.etaConfidence >= 80 ? '🟢' : pkg.etaConfidence >= 60 ? '🟡' : '🔴'}
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     {pkg.status !== 'DELIVERED' ? (
+                      <>
+                        <button
+                          className="claim-btn"
+                          style={{
+                            marginTop: 12,
+                            background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+                          }}
+                          onClick={(e) => onUpdateStatus(e, pkg.__backendId)}
+                          type="button"
+                        >
+                          📦 Update Status
+                        </button>
+                        <button
+                          className="claim-btn"
+                          style={{
+                            marginTop: 8,
+                            background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openDeliveryModal(pkg);
+                          }}
+                          type="button"
+                        >
+                          📝 Modify Delivery
+                        </button>
+                      </>
+                    ) : (
                       <button
                         className="claim-btn"
                         style={{
                           marginTop: 12,
-                          background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+                          background: 'linear-gradient(135deg, #18C37E 0%, #14A664 100%)',
                         }}
-                        onClick={(e) => onUpdateStatus(e, pkg.__backendId)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openPhotosModal(pkg);
+                        }}
                         type="button"
                       >
-                        📦 Update Status
+                        📸 View Delivery Photos
                       </button>
-                    ) : null}
+                    )}
 
                     <button className="delete-btn" onClick={(e) => onDelete(e, pkg.__backendId)} type="button">
                       {isConfirm ? '⚠️ Confirm Delete?' : '🗑️ Remove Tracking'}
@@ -1040,6 +1206,249 @@ export default function HollyShipMapApp() {
               </button>
             </div>
           </form>
+        </div>
+      </div>
+
+      {/* Pickup Optimization Modal */}
+      <div className={`modal-overlay ${isPickupModalOpen ? 'active' : ''}`}>
+        <div className="modal-content glass" style={{ maxWidth: 700 }}>
+          <h2 className="modal-header">🚚 Optimize Pickup Time</h2>
+          <p style={{ fontSize: 14, color: '#666', marginBottom: 20 }}>
+            Compare carriers and find the best pickup time based on cost, speed, and reliability.
+          </p>
+          <form onSubmit={optimizePickup}>
+            <div className="form-group">
+              <label className="form-label" htmlFor="pickup-origin-input">
+                Pickup Location
+              </label>
+              <input
+                type="text"
+                id="pickup-origin-input"
+                className="form-input"
+                placeholder="e.g., San Francisco, CA"
+                required
+                value={pickupOrigin}
+                onChange={(e) => setPickupOrigin(e.target.value)}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="pickup-dest-input">
+                Delivery Destination
+              </label>
+              <input
+                type="text"
+                id="pickup-dest-input"
+                className="form-input"
+                placeholder="e.g., New York, NY"
+                required
+                value={pickupDestination}
+                onChange={(e) => setPickupDestination(e.target.value)}
+              />
+            </div>
+
+            {pickupResults && (
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ 
+                  background: 'linear-gradient(135deg, #18C37E 0%, #14A664 100%)',
+                  padding: 16,
+                  borderRadius: 12,
+                  color: 'white',
+                  marginBottom: 16
+                }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>
+                    🏆 Recommended: {pickupResults.recommended.carrier}
+                  </div>
+                  <div style={{ fontSize: 14, opacity: 0.95, marginBottom: 4 }}>
+                    Cost: ${pickupResults.recommended.estimatedCost} • {pickupResults.recommended.estimatedDays} days
+                  </div>
+                  <div style={{ fontSize: 14, opacity: 0.95, marginBottom: 4 }}>
+                    Confidence: {pickupResults.recommended.confidence}% • Score: {pickupResults.recommended.score}
+                  </div>
+                  <div style={{ fontSize: 13, opacity: 0.9, marginTop: 8 }}>
+                    <strong>Pickup Times:</strong> {pickupResults.recommended.pickupTimes.join(', ')}
+                  </div>
+                </div>
+
+                <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>
+                  Alternative Options:
+                </div>
+                {pickupResults.alternatives.map((alt, idx) => (
+                  <div key={idx} style={{
+                    padding: 12,
+                    border: '1px solid #e0e0e0',
+                    borderRadius: 8,
+                    marginBottom: 8,
+                    background: 'white'
+                  }}>
+                    <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                      {alt.carrier}
+                    </div>
+                    <div style={{ fontSize: 13, color: '#666' }}>
+                      ${alt.estimatedCost} • {alt.estimatedDays} days • {alt.confidence}% confidence • Score: {alt.score}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#888', marginTop: 4 }}>
+                      {alt.pickupTimes.slice(0, 3).join(', ')}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => {
+                  setIsPickupModalOpen(false);
+                  setPickupOrigin('');
+                  setPickupDestination('');
+                  setPickupResults(null);
+                }}
+              >
+                Close
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={pickupOptimizing}>
+                {pickupOptimizing ? (
+                  <>
+                    <span className="loading-spinner"></span> Optimizing...
+                  </>
+                ) : (
+                  'Compare Carriers'
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      {/* Delivery Modification Modal */}
+      <div className={`modal-overlay ${isDeliveryModalOpen ? 'active' : ''}`}>
+        <div className="modal-content glass" style={{ maxWidth: 600 }}>
+          <h2 className="modal-header">📝 Modify Delivery</h2>
+          <p style={{ fontSize: 14, color: '#666', marginBottom: 20 }}>
+            Change your delivery time or destination when supported by the carrier.
+          </p>
+          <form onSubmit={updateDelivery}>
+            <div className="form-group">
+              <label className="form-label" htmlFor="delivery-time-input">
+                Requested Delivery Time (Optional)
+              </label>
+              <input
+                type="datetime-local"
+                id="delivery-time-input"
+                className="form-input"
+                value={newDeliveryTime}
+                onChange={(e) => setNewDeliveryTime(e.target.value)}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="new-dest-input">
+                New Destination (Optional)
+              </label>
+              <input
+                type="text"
+                id="new-dest-input"
+                className="form-input"
+                placeholder="e.g., Los Angeles, CA"
+                value={newDestination}
+                onChange={(e) => setNewDestination(e.target.value)}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="delivery-notes-input">
+                Delivery Notes
+              </label>
+              <textarea
+                id="delivery-notes-input"
+                className="form-input"
+                placeholder="Gate code, drop-off preferences, special instructions..."
+                rows={4}
+                value={newDeliveryNotes}
+                onChange={(e) => setNewDeliveryNotes(e.target.value)}
+                maxLength={500}
+              />
+              <div style={{ fontSize: 12, color: '#888', marginTop: 4 }}>
+                {newDeliveryNotes.length}/500 characters
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => {
+                  setIsDeliveryModalOpen(false);
+                  setSelectedShipmentForDelivery(null);
+                }}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={isUpdatingDelivery}>
+                {isUpdatingDelivery ? (
+                  <>
+                    <span className="loading-spinner"></span> Updating...
+                  </>
+                ) : (
+                  'Update Delivery'
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      {/* Delivery Photos Modal */}
+      <div className={`modal-overlay ${isPhotosModalOpen ? 'active' : ''}`}>
+        <div className="modal-content glass" style={{ maxWidth: 700 }}>
+          <h2 className="modal-header">📸 Delivery Photos</h2>
+          <p style={{ fontSize: 14, color: '#666', marginBottom: 20 }}>
+            Proof of delivery photos for tracking number: {selectedShipmentForPhotos?.trackingNumber}
+          </p>
+          
+          {deliveryPhotos.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 40, color: '#888' }}>
+              <div style={{ fontSize: 48, marginBottom: 16 }}>📷</div>
+              <div>No delivery photos available yet</div>
+              <div style={{ fontSize: 13, marginTop: 8 }}>
+                Photos will appear here once the courier completes delivery
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16 }}>
+              {deliveryPhotos.map((photo) => (
+                <div key={photo.id} style={{ border: '1px solid #e0e0e0', borderRadius: 8, overflow: 'hidden' }}>
+                  <img 
+                    src={photo.photoUrl} 
+                    alt="Delivery proof" 
+                    style={{ width: '100%', height: 200, objectFit: 'cover' }}
+                  />
+                  <div style={{ padding: 12, fontSize: 12, color: '#666' }}>
+                    <div>📅 {new Date(photo.uploadedAt).toLocaleString()}</div>
+                    {photo.capturedAt && (
+                      <div style={{ marginTop: 4 }}>📸 {new Date(photo.capturedAt).toLocaleString()}</div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="modal-actions" style={{ marginTop: 24 }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                setIsPhotosModalOpen(false);
+                setSelectedShipmentForPhotos(null);
+                setDeliveryPhotos([]);
+              }}
+            >
+              Close
+            </button>
+          </div>
         </div>
       </div>
     </div>

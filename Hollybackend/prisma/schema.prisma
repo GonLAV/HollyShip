@@ -39,6 +39,7 @@ model User {
   shipments      Shipment[]
   usageMeters    UsageMeter[]
   consents       Consent[]
+  addresses      Address[]
 }
 
 model UsageMeter {
@@ -78,31 +79,37 @@ model Order {
 }
 
 model Shipment {
-  id             String          @id @default(uuid())
-  orderId        String?
-  carrierId      String?
-  userId         String?
-  label          String?
-  trackingNumber String
-  status         CanonicalStatus @default(CREATED)
-  eta            DateTime?
-  origin         String?
-  originLat      Float?
-  originLng      Float?
-  destination    String?
-  destinationLat Float?
-  destinationLng Float?
-  currentLat     Float?
-  currentLng     Float?
-  lastEventAt    DateTime?
-  createdAt      DateTime        @default(now())
+  id                    String          @id @default(uuid())
+  orderId               String?
+  carrierId             String?
+  userId                String?
+  label                 String?
+  trackingNumber        String
+  status                CanonicalStatus @default(CREATED)
+  eta                   DateTime?
+  origin                String?
+  originLat             Float?
+  originLng             Float?
+  destination           String?
+  destinationLat        Float?
+  destinationLng        Float?
+  currentLat            Float?
+  currentLng            Float?
+  lastEventAt           DateTime?
+  createdAt             DateTime        @default(now())
+  // Delivery customization fields
+  requestedDeliveryTime DateTime?
+  deliveryNotes         String?         // Gate codes, drop-off preferences
+  allowTimeChange       Boolean         @default(true)
+  allowDestinationChange Boolean        @default(true)
 
-  order                Order?          @relation(fields: [orderId], references: [id])
-  carrier              Carrier?        @relation(fields: [carrierId], references: [id])
-  user                 User?           @relation(fields: [userId], references: [id])
+  order                Order?            @relation(fields: [orderId], references: [id])
+  carrier              Carrier?          @relation(fields: [carrierId], references: [id])
+  user                 User?             @relation(fields: [userId], references: [id])
   events               TrackingEvent[]
   chainLinks           TrackingChain[]
   loyalty              LoyaltyLedger[]
+  deliveryPhotos       DeliveryPhoto[]
   orderNumberEncrypted String?
 
   @@index([trackingNumber])
@@ -192,4 +199,42 @@ model Consent {
   @@unique([userId, consentType])
   @@index([userId])
   @@index([consentType, granted])
+}
+
+model DeliveryPhoto {
+  id          String   @id @default(uuid())
+  shipmentId  String
+  photoUrl    String   // S3/cloud storage URL
+  photoHash   String?  // SHA-256 hash for integrity verification
+  uploadedAt  DateTime @default(now())
+  capturedAt  DateTime? // When photo was taken by courier
+  metadata    Json?    // EXIF data, location, etc.
+
+  shipment Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@index([shipmentId])
+  @@index([uploadedAt])
+}
+
+model Address {
+  id              String   @id @default(uuid())
+  userId          String
+  addressLine1    String
+  addressLine2    String?
+  city            String
+  state           String?
+  postalCode      String
+  country         String   @default("US")
+  // Delivery preferences
+  gateCode        String?  // Encrypted gate/entry code
+  deliveryNotes   String?  // Drop-off preferences, special instructions
+  nickname        String?  // "Home", "Office", etc.
+  isDefault       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, isDefault])
 }
