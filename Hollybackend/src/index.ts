@@ -1383,6 +1383,93 @@ server.post('/v1/me/consents', async (req, reply) => {
   });
 });
 
+// Notification preferences endpoints
+
+// Get user's notification preferences
+server.get('/v1/me/notification-preferences', async (req, reply) => {
+  const userId = requireAuthUserId(req, reply);
+  if (!userId) return;
+
+  const preference = await prisma.notificationPreference.findUnique({
+    where: { userId },
+  });
+
+  if (!preference) {
+    // Return default preferences if not set
+    return reply.send({
+      ok: true,
+      preferences: {
+        methods: [],
+        frequency: 'REAL_TIME',
+        enabled: true,
+      },
+    });
+  }
+
+  return reply.send({
+    ok: true,
+    preferences: {
+      methods: preference.methods,
+      frequency: preference.frequency,
+      enabled: preference.enabled,
+      createdAt: preference.createdAt.toISOString(),
+      updatedAt: preference.updatedAt.toISOString(),
+    },
+  });
+});
+
+// Create or update notification preferences
+server.post('/v1/me/notification-preferences', async (req, reply) => {
+  const userId = requireAuthUserId(req, reply);
+  if (!userId) return;
+
+  const bodySchema = z.object({
+    methods: z.array(z.enum(['EMAIL', 'SMS'])).optional(),
+    frequency: z.enum(['REAL_TIME', 'DAILY_SUMMARY', 'OUT_FOR_DELIVERY_ONLY']).optional(),
+    enabled: z.boolean().optional(),
+  });
+
+  const body = bodySchema.parse(req.body);
+
+  const preference = await prisma.notificationPreference.upsert({
+    where: { userId },
+    create: {
+      userId,
+      methods: body.methods ?? [],
+      frequency: body.frequency ?? 'REAL_TIME',
+      enabled: body.enabled ?? true,
+    },
+    update: {
+      ...(body.methods !== undefined && { methods: body.methods }),
+      ...(body.frequency !== undefined && { frequency: body.frequency }),
+      ...(body.enabled !== undefined && { enabled: body.enabled }),
+    },
+  });
+
+  return reply.send({
+    ok: true,
+    preferences: {
+      methods: preference.methods,
+      frequency: preference.frequency,
+      enabled: preference.enabled,
+      createdAt: preference.createdAt.toISOString(),
+      updatedAt: preference.updatedAt.toISOString(),
+    },
+  });
+});
+
+// Delete notification preferences (reset to defaults)
+server.delete('/v1/me/notification-preferences', async (req, reply) => {
+  const userId = requireAuthUserId(req, reply);
+  if (!userId) return;
+
+  await prisma.notificationPreference.deleteMany({
+    where: { userId },
+  });
+
+  return reply.send({ ok: true, deleted: true });
+});
+
 server.get('/v1/me/export', async (req, reply) => {
   const userId = requireAuthUserId(req, reply);
   if (!userId) return;

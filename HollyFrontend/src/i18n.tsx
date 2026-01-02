@@ -7,6 +7,7 @@ type Dict = Record<string, string>
 const EN: Dict = {
   features: 'Features',
   shipments: 'Shipments',
+  notifications: 'Notifications',
   starters: 'Starters',
   about: 'About',
   login: 'Login',
@@ -23,6 +24,7 @@ const EN: Dict = {
 const ES: Dict = {
   features: 'Funciones',
   shipments: 'Envíos',
+  notifications: 'Notificaciones',
   starters: 'Inicios',
   about: 'Acerca de',
   login: 'Iniciar sesión',

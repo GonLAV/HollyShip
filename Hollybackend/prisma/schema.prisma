@@ -25,6 +25,17 @@ enum PlanTier {
   enterprise
 }
 
+enum NotificationMethod {
+  EMAIL
+  SMS
+}
+
+enum NotificationFrequency {
+  REAL_TIME
+  DAILY_SUMMARY
+  OUT_FOR_DELIVERY_ONLY
+}
+
 model User {
   id         String   @id @default(uuid())
   email      String?  @unique
@@ -34,11 +45,12 @@ model User {
   tz         String?
   createdAt  DateTime @default(now())
 
-  orders         Order[]
-  loyaltyEntries LoyaltyLedger[]
-  shipments      Shipment[]
-  usageMeters    UsageMeter[]
-  consents       Consent[]
+  orders                  Order[]
+  loyaltyEntries          LoyaltyLedger[]
+  shipments               Shipment[]
+  usageMeters             UsageMeter[]
+  consents                Consent[]
+  notificationPreferences NotificationPreference[]
 }
 
 model UsageMeter {
@@ -192,4 +204,19 @@ model Consent {
   @@unique([userId, consentType])
   @@index([userId])
   @@index([consentType, granted])
+}
+
+model NotificationPreference {
+  id        String                 @id @default(uuid())
+  userId    String
+  methods   NotificationMethod[]
+  frequency NotificationFrequency  @default(REAL_TIME)
+  enabled   Boolean                @default(true)
+  createdAt DateTime               @default(now())
+  updatedAt DateTime               @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId])
+  @@index([userId])
 }
