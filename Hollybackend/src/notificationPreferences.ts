@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { FastifyRequest } from 'fastify';
 import { prisma } from './prisma.js';
+import type { Prisma } from '@prisma/client';
 
 // Validation schemas
 export const NotificationMethodSchema = z.enum(['email', 'push', 'webhook', 'sms']);
@@ -59,8 +60,8 @@ export async function upsertNotificationPreference(
   // Validate metadata based on method
   if (method === 'webhook' && data.metadata) {
     const url = data.metadata.url;
-    if (typeof url !== 'string' || !url.startsWith('http')) {
-      throw new Error('Webhook method requires a valid URL in metadata.url');
+    if (typeof url !== 'string' || !url.startsWith('https://')) {
+      throw new Error('Webhook method requires a valid HTTPS URL in metadata.url');
     }
   }
 
@@ -76,12 +77,12 @@ export async function upsertNotificationPreference(
       method: data.method,
       frequency: data.frequency,
       enabled: data.enabled,
-      metadata: data.metadata as any,
+      metadata: (data.metadata ?? null) as Prisma.InputJsonValue,
     },
     update: {
       frequency: data.frequency,
       enabled: data.enabled,
-      metadata: data.metadata as any,
+      metadata: (data.metadata ?? null) as Prisma.InputJsonValue,
     },
   });
 }
@@ -97,8 +98,8 @@ export async function updateNotificationPreference(
   // Validate metadata based on method if provided
   if (method === 'webhook' && data.metadata) {
     const url = data.metadata.url;
-    if (typeof url !== 'string' || !url.startsWith('http')) {
-      throw new Error('Webhook method requires a valid URL in metadata.url');
+    if (typeof url !== 'string' || !url.startsWith('https://')) {
+      throw new Error('Webhook method requires a valid HTTPS URL in metadata.url');
     }
   }
 
@@ -112,7 +113,7 @@ export async function updateNotificationPreference(
     data: {
       ...(data.frequency !== undefined && { frequency: data.frequency }),
       ...(data.enabled !== undefined && { enabled: data.enabled }),
-      ...(data.metadata !== undefined && { metadata: data.metadata as any }),
+      ...(data.metadata !== undefined && { metadata: (data.metadata ?? null) as Prisma.InputJsonValue }),
     },
   });
 }

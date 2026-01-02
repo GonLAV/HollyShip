@@ -52,8 +52,8 @@ export function NotificationPreferencesPage() {
         setValidationError('Webhook URL is required for webhook notifications')
         return
       }
-      if (!webhookUrl.startsWith('http://') && !webhookUrl.startsWith('https://')) {
-        setValidationError('Webhook URL must start with http:// or https://')
+      if (!webhookUrl.startsWith('https://')) {
+        setValidationError('Webhook URL must use HTTPS for security')
         return
       }
     }
