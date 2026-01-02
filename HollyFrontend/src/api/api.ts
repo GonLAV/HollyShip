@@ -6,6 +6,8 @@ import type {
   EmailVerifyResponse,
   HealthResponse,
   LoyaltyResponse,
+  NotificationPreferences,
+  NotificationPreferencesResponse,
   OAuthVerifyResponse,
   ShipmentDetail,
   ShipmentSummary,
@@ -136,6 +138,24 @@ export class APIClient {
   // Loyalty
   getUserLoyalty(userId: string): Promise<LoyaltyResponse> {
     return this.request(`/v1/users/${encodeURIComponent(userId)}/loyalty`)
+  }
+
+  // Notification Preferences
+  getNotificationPreferences(): Promise<NotificationPreferencesResponse> {
+    return this.request('/v1/me/notification-preferences')
+  }
+
+  updateNotificationPreferences(
+    preferences: Partial<Pick<NotificationPreferences, 'methods' | 'frequency' | 'enabled'>>
+  ): Promise<NotificationPreferencesResponse> {
+    return this.request('/v1/me/notification-preferences', {
+      method: 'POST',
+      body: JSON.stringify(preferences),
+    })
+  }
+
+  deleteNotificationPreferences(): Promise<{ ok: boolean; deleted: boolean }> {
+    return this.request('/v1/me/notification-preferences', { method: 'DELETE' })
   }
 
   // SSE stats stream helper
