@@ -76,6 +76,7 @@ External APIs (Tracking Providers)
 - **Multi-Carrier Support**: UPS, FedEx, USPS, DHL, and more
 - **Automatic Tracking**: Extract tracking numbers from emails (Phase 3)
 - **Real-Time Updates**: Webhooks and polling for status changes
+- **Notification Preferences**: Customize how you receive updates (email, push, webhook, SMS)
 - **Rewards Program**: Earn points for tracking shipments
 - **Privacy-First**: GDPR/CCPA compliant with data export/deletion
 - **Developer-Friendly**: Full OpenAPI spec at `/docs`
@@ -83,6 +84,7 @@ External APIs (Tracking Providers)
 ## 📚 Documentation
 
 - [Quick Start Guide](QUICKSTART.md) - Get up and running
+- [Notification Preferences](docs/NOTIFICATION_PREFERENCES.md) - Configure notifications
 - [MVP Roadmap](docs/MVP_ROADMAP.md) - Implementation plan
 - [Founder Roadmap](docs/FOUNDER_ROADMAP.md) - Product vision
 - [Architecture](docs/ARCHITECTURE_INFRA.md) - Deployment guide
@@ -142,6 +144,13 @@ All colors meet WCAG AA contrast requirements.
 ### Privacy
 - `GET /v1/me/export` - Export data
 - `DELETE /v1/me` - Delete account
+
+### Notifications
+- `GET /v1/me/notification-preferences` - List preferences
+- `GET /v1/me/notification-preferences/{method}` - Get preference
+- `POST /v1/me/notification-preferences` - Create/update preference
+- `PATCH /v1/me/notification-preferences/{method}` - Update preference
+- `DELETE /v1/me/notification-preferences/{method}` - Delete preference
 
 See full API docs at http://localhost:8080/docs
 
