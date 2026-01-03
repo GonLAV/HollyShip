@@ -221,14 +221,15 @@ export default function ShipmentDetailPage() {
 
       {/* Quick Actions Bar */}
       {detail && (
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '1rem' }}>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '1rem' }} role="toolbar" aria-label="Shipment actions">
           <button 
             className="chip" 
             onClick={() => {
               navigator.clipboard.writeText(detail.trackingNumber)
               show('📋 Tracking number copied!')
             }}
-            title="Copy tracking number"
+            title="Copy tracking number to clipboard"
+            aria-label="Copy tracking number to clipboard"
           >
             📋 Copy Tracking #
           </button>
@@ -240,7 +241,8 @@ export default function ShipmentDetailPage() {
               navigator.clipboard.writeText(url)
               show('🔗 Link copied! Share with anyone.')
             }}
-            title="Share this page"
+            title="Copy page link to share"
+            aria-label="Copy page link to share"
           >
             🔗 Share Link
           </button>
@@ -257,24 +259,25 @@ export default function ShipmentDetailPage() {
               }
             }}
             title="Refresh tracking status"
+            aria-label="Refresh tracking status"
           >
             🔄 Refresh
           </button>
 
           {detail.status === 'DELIVERED' && (
-            <span className="chip" style={{ background: 'var(--primary)', color: 'white', cursor: 'default' }}>
+            <span className="chip" style={{ background: 'var(--primary)', color: 'white', cursor: 'default' }} role="status" aria-label="Package delivered">
               ✓ Delivered
             </span>
           )}
           
           {detail.status === 'OUT_FOR_DELIVERY' && (
-            <span className="chip" style={{ background: '#ff9500', color: 'white', cursor: 'default' }}>
+            <span className="chip" style={{ background: '#ff9500', color: 'white', cursor: 'default' }} role="status" aria-label="Package out for delivery">
               🚚 Out for Delivery
             </span>
           )}
           
           {detail.status === 'IN_TRANSIT' && (
-            <span className="chip" style={{ background: '#4BA3FF', color: 'white', cursor: 'default' }}>
+            <span className="chip" style={{ background: '#4BA3FF', color: 'white', cursor: 'default' }} role="status" aria-label="Package in transit">
               📦 In Transit
             </span>
           )}
@@ -285,12 +288,15 @@ export default function ShipmentDetailPage() {
       {detail && (
         <div style={{ marginBottom: '1rem' }}>
           <details>
-            <summary style={{ cursor: 'pointer', fontWeight: 500 }}>📝 Package Notes {packageNotes && '(saved)'}</summary>
+            <summary style={{ cursor: 'pointer', fontWeight: 500 }} aria-label="Toggle package notes">
+              📝 Package Notes {packageNotes && '(saved)'}
+            </summary>
             <div style={{ marginTop: '0.5rem' }}>
               <textarea
                 value={packageNotes}
                 onChange={(e) => saveNotes(e.target.value)}
                 placeholder="Add personal notes: What's in this package? Gift for whom? Special instructions?"
+                aria-label="Personal package notes"
                 style={{ 
                   width: '100%', 
                   minHeight: '80px', 
@@ -316,14 +322,24 @@ export default function ShipmentDetailPage() {
 
       <div className="email-row">
         <label>
-          <input type="checkbox" checked={emailUpdates} onChange={(e) => setEmailUpdates(e.target.checked)} />
+          <input 
+            type="checkbox" 
+            checked={emailUpdates} 
+            onChange={(e) => setEmailUpdates(e.target.checked)}
+            aria-label="Enable email updates for this shipment"
+          />
           <span style={{ marginLeft: 6 }}>Email me updates (on-the-way, delivered)</span>
         </label>
       </div>
 
       <div className="email-row">
         <label>
-          <input type="checkbox" checked={animationsEnabled} onChange={(e) => setAnimationsEnabled(e.target.checked)} />
+          <input 
+            type="checkbox" 
+            checked={animationsEnabled} 
+            onChange={(e) => setAnimationsEnabled(e.target.checked)}
+            aria-label="Enable delivery animations"
+          />
           <span style={{ marginLeft: 6 }}>Enable animations</span>
         </label>
       </div>
@@ -337,6 +353,7 @@ export default function ShipmentDetailPage() {
                 value={animationStyle} 
                 onChange={(e) => setAnimationStyle(e.target.value as AnimationStyle)}
                 style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg)', color: 'inherit' }}
+                aria-label="Choose animation style for delivery celebration"
               >
                 <option value="fireworks">🎆 Fireworks</option>
                 <option value="confetti">🎊 Confetti</option>
@@ -349,14 +366,24 @@ export default function ShipmentDetailPage() {
 
           <div className="email-row" style={{ marginLeft: 24 }}>
             <label>
-              <input type="checkbox" checked={soundEnabled} onChange={(e) => setSoundEnabled(e.target.checked)} />
+              <input 
+                type="checkbox" 
+                checked={soundEnabled} 
+                onChange={(e) => setSoundEnabled(e.target.checked)}
+                aria-label="Enable sound effects for animations"
+              />
               <span style={{ marginLeft: 6 }}>🔊 Play sound effect</span>
             </label>
           </div>
 
           <div className="email-row" style={{ marginLeft: 24 }}>
             <label>
-              <input type="checkbox" checked={respectReducedMotion} onChange={(e) => setRespectReducedMotion(e.target.checked)} />
+              <input 
+                type="checkbox" 
+                checked={respectReducedMotion} 
+                onChange={(e) => setRespectReducedMotion(e.target.checked)}
+                aria-label="Respect system reduced motion preference"
+              />
               <span style={{ marginLeft: 6 }}>♿ Respect reduced motion preference</span>
             </label>
           </div>
@@ -370,6 +397,7 @@ export default function ShipmentDetailPage() {
                 sound: soundEnabled,
                 respectReducedMotion 
               })}
+              aria-label="Test the selected animation style"
             >
               🎉 Test Animation
             </button>
@@ -379,14 +407,24 @@ export default function ShipmentDetailPage() {
       
       <div className="email-row">
         <label>
-          <input type="checkbox" checked={giftSurpriseMode} onChange={(e) => setGiftSurpriseMode(e.target.checked)} />
+          <input 
+            type="checkbox" 
+            checked={giftSurpriseMode} 
+            onChange={(e) => setGiftSurpriseMode(e.target.checked)}
+            aria-label="Enable gift surprise mode to hide sender and contents"
+          />
           <span style={{ marginLeft: 6 }}>🎁 Gift Surprise Mode (hide sender/contents)</span>
         </label>
       </div>
       
       <div className="email-row">
         <label>
-          <input type="checkbox" checked={showWeatherImpact} onChange={(e) => setShowWeatherImpact(e.target.checked)} />
+          <input 
+            type="checkbox" 
+            checked={showWeatherImpact} 
+            onChange={(e) => setShowWeatherImpact(e.target.checked)}
+            aria-label="Show weather impact on delivery"
+          />
           <span style={{ marginLeft: 6 }}>🌤️ Show weather impact on delivery</span>
         </label>
       </div>
@@ -395,18 +433,21 @@ export default function ShipmentDetailPage() {
         <>
           {/* Weather Impact Alert */}
           {weatherImpact && weatherImpact.severity !== 'none' && (
-            <div style={{
-              marginTop: '1rem',
-              padding: '12px',
-              borderRadius: '8px',
-              border: '1px solid',
-              borderColor: weatherImpact.severity === 'high' ? '#FF4B4B' 
-                         : weatherImpact.severity === 'medium' ? '#FFA94B' 
-                         : '#4BA3FF',
-              background: weatherImpact.severity === 'high' ? 'rgba(255, 75, 75, 0.1)' 
-                        : weatherImpact.severity === 'medium' ? 'rgba(255, 169, 75, 0.1)' 
-                        : 'rgba(75, 163, 255, 0.1)',
-            }}>
+            <div 
+              role="alert"
+              aria-live="polite"
+              style={{
+                marginTop: '1rem',
+                padding: '12px',
+                borderRadius: '8px',
+                border: '1px solid',
+                borderColor: weatherImpact.severity === 'high' ? '#FF4B4B' 
+                           : weatherImpact.severity === 'medium' ? '#FFA94B' 
+                           : '#4BA3FF',
+                background: weatherImpact.severity === 'high' ? 'rgba(255, 75, 75, 0.1)' 
+                          : weatherImpact.severity === 'medium' ? 'rgba(255, 169, 75, 0.1)' 
+                          : 'rgba(75, 163, 255, 0.1)',
+              }}>
               <strong style={{ display: 'block', marginBottom: '4px' }}>
                 Weather Alert
               </strong>
@@ -414,7 +455,7 @@ export default function ShipmentDetailPage() {
             </div>
           )}
           
-          <section className="eta-panel">
+          <section className="eta-panel" aria-label="Package status and estimated arrival">
             <h2>{latestEventEmoji} Package Status</h2>
             
             {detail.eta && timeRemaining && (
@@ -450,6 +491,7 @@ export default function ShipmentDetailPage() {
                   setExpectedDays(next ? Number(next) : null)
                 }}
                 placeholder="e.g. 10"
+                aria-label="Enter expected business days for delivery"
               />
             </label>
             <p className="eta-message">{etaMsg}</p>
@@ -497,7 +539,7 @@ export default function ShipmentDetailPage() {
       )}
 
       {detail && (
-        <section>
+        <section aria-label="Package journey timeline">
           <h2>📍 Package Journey</h2>
           {detail.events.length > 0 ? (
             <div style={{ position: 'relative', paddingLeft: '30px' }}>
