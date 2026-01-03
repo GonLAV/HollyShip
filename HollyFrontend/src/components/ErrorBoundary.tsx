@@ -32,7 +32,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, { hasError
           }}
         >
           <h1 style={{ color: 'var(--danger)', marginBottom: '1rem' }}>⚠️ Something went wrong</h1>
-          <p style={{ marginBottom: '1rem', color: 'var(--muted)' }}>
+          <p style={{ marginBottom: '1rem', color: 'var(--text-muted)' }}>
             We encountered an unexpected error. Please try refreshing the page.
           </p>
           <details style={{ textAlign: 'left', marginTop: '1.5rem' }}>

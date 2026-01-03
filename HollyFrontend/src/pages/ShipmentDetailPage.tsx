@@ -288,7 +288,10 @@ export default function ShipmentDetailPage() {
       {detail && (
         <div style={{ marginBottom: '1rem' }}>
           <details>
-            <summary style={{ cursor: 'pointer', fontWeight: 500 }} aria-label="Toggle package notes">
+            <summary 
+              style={{ cursor: 'pointer', fontWeight: 500 }} 
+              aria-label={packageNotes ? 'Toggle package notes (saved)' : 'Toggle package notes'}
+            >
               📝 Package Notes {packageNotes && '(saved)'}
             </summary>
             <div style={{ marginTop: '0.5rem' }}>
