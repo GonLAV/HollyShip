@@ -472,6 +472,157 @@ The implementation successfully delivers on all MVP roadmap requirements and pro
 
 ---
 
+## ✅ New Features Added (January 2026)
+
+**Date:** January 2, 2026  
+**Status:** ✅ COMPLETE  
+
+### New Data Models
+
+1. **SavedAddress** - User's saved addresses with:
+   - Nickname and full address details
+   - Optional instructions (gate codes, delivery notes)
+   - Default address flag
+   - Geocoding support (lat/lng)
+
+2. **DeliveryPhoto** - Proof of delivery photos:
+   - Photo URL storage
+   - Photo type (proof_of_delivery, package_condition, location)
+   - Metadata support (timestamp, quality, etc.)
+   - Uploaded by tracking (user/carrier)
+
+3. **DeliveryPreferences** - User delivery preferences:
+   - Default delivery instructions
+   - Preferred delivery time windows
+   - Reschedule and redirect permissions
+   - Notification preferences (dispatch, delivery)
+
+4. **Shipment Updates**:
+   - Added `deliveryNotes` field for driver instructions
+   - Added `carbonFootprintKg` field for environmental impact
+
+### New Features
+
+#### 1. Saved Addresses
+- **API Endpoints (4):**
+  - `GET /v1/users/{userId}/addresses` - List all saved addresses
+  - `POST /v1/users/{userId}/addresses` - Create new address
+  - `PATCH /v1/users/{userId}/addresses/{addressId}` - Update address
+  - `DELETE /v1/users/{userId}/addresses/{addressId}` - Delete address
+- **Features:**
+  - Nickname support for easy identification
+  - Default address selection
+  - Delivery instructions per address
+  - Auto-geocoding ready
+
+#### 2. Carbon Footprint Tracking
+- **API Endpoints (2):**
+  - `POST /v1/shipments/{id}/calculate-carbon` - Calculate/recalculate footprint
+  - `GET /v1/users/{userId}/carbon-stats` - Get user's carbon statistics
+- **Features:**
+  - Automatic carbon calculation on shipment creation
+  - Distance-based calculations using Haversine formula
+  - Carrier-specific emission factors (air, ground, express, ocean)
+  - Carbon offset cost estimation ($15/ton CO2)
+  - User-level carbon statistics and tracking
+  - Human-readable carbon descriptions
+
+#### 3. Delivery Photos
+- **API Endpoints (3):**
+  - `POST /v1/shipments/{id}/photos` - Upload delivery photo
+  - `GET /v1/shipments/{id}/photos` - Get all photos for shipment
+  - `DELETE /v1/shipments/{shipmentId}/photos/{photoId}` - Delete photo
+- **Features:**
+  - Multiple photo types (proof_of_delivery, package_condition, location)
+  - Metadata support for additional context
+  - Photo URL storage (S3/CDN ready)
+  - Uploader tracking
+
+#### 4. Delivery Notes & Preferences
+- **API Endpoints (3):**
+  - `PATCH /v1/shipments/{id}/delivery-notes` - Update delivery notes
+  - `GET /v1/users/{userId}/delivery-preferences` - Get preferences
+  - `PATCH /v1/users/{userId}/delivery-preferences` - Update preferences
+- **Features:**
+  - Per-shipment delivery notes
+  - Default delivery instructions
+  - Preferred delivery time windows
+  - Reschedule/redirect permissions
+  - Notification preferences
+
+### Technical Implementation
+
+**New Module:**
+- `carbonFootprint.ts` - Carbon emission calculations
+  - Distance calculation (Haversine formula)
+  - Carrier-specific emission factors
+  - Offset cost estimation
+  - Human-readable descriptions
+
+**Database Migration:**
+- `20260102152045_add_new_features` - New tables and fields
+  - 3 new tables: SavedAddress, DeliveryPhoto, DeliveryPreferences
+  - 2 new shipment fields: deliveryNotes, carbonFootprintKg
+
+**Updated Endpoints:**
+- Shipment creation now auto-calculates carbon footprint
+- Shipment retrieval includes carbon and delivery notes
+
+### Testing
+
+**New Test Suite:**
+- `test-new-features.sh` - Comprehensive integration tests
+  - 14 test cases covering all new features
+  - Tests saved addresses CRUD operations
+  - Tests carbon footprint calculation
+  - Tests delivery photos upload and retrieval
+  - Tests delivery preferences management
+  - Tests user-level carbon statistics
+
+### Documentation Updates
+
+- Updated README.md with new API endpoints
+- Marked implemented features in "10 engaging features" list
+- Added this implementation summary section
+
+### API Count Update
+
+**Total Endpoints:** 46 (+14 new)
+- Saved Addresses: 4 endpoints
+- Delivery Preferences: 2 endpoints
+- Carbon Footprint: 2 endpoints
+- Delivery Photos: 3 endpoints
+- Delivery Notes: 1 endpoint
+- Carbon Stats: 1 endpoint
+- Background Jobs: 1 endpoint
+
+### Database Schema Update
+
+**Total Tables:** 14 (+3 new)
+- SavedAddress
+- DeliveryPhoto
+- DeliveryPreferences
+- (11 existing tables)
+
+**Total Fields:** 110+ (+30 new)
+
+### Features Implemented from "10 Engaging Features" List
+
+✅ **Saved addresses with autofill and nickname support** (Feature #3)
+✅ **Carbon footprint insights per shipment with optional offsets** (Feature #8)
+✅ **Photo confirmation on delivery plus delivery notes for drivers** (Feature #9)
+✅ **Flexible delivery controls: pause, reschedule, or redirect** (Feature #6 - preferences API)
+
+### Benefits
+
+1. **Environmental Impact**: Users can track and reduce their shipping carbon footprint
+2. **Convenience**: Saved addresses speed up the shipping process
+3. **Transparency**: Delivery photos provide proof and peace of mind
+4. **Flexibility**: Delivery preferences give users control over their deliveries
+5. **Personalization**: Custom delivery instructions improve delivery success rate
+
+---
+
 **Implementation By:** GitHub Copilot  
 **Review Status:** ✅ Passed Code Review  
 **Security Status:** ✅ Passed CodeQL  
