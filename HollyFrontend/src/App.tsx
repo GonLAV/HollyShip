@@ -30,9 +30,9 @@ export default function App() {
       <I18nProvider>
       <ToastProvider>
       <ErrorBoundary>
-      <header>
-        <nav className="topnav" aria-label="Primary">
-          <div className="brand"><Link to="/">HollyShip</Link></div>
+      <header role="banner">
+        <nav className="topnav" aria-label="Primary navigation">
+          <div className="brand"><Link to="/" aria-label="HollyShip home">HollyShip</Link></div>
           <div className="spacer" />
           <NavLink to="/" end><NavLabel k="features" /></NavLink>
           <NavLink to="/shipments"><NavLabel k="shipments" /></NavLink>
@@ -41,12 +41,29 @@ export default function App() {
           <NavLink to="/about"><NavLabel k="about" /></NavLink>
           <button className="chip" aria-label="Toggle theme" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
             {theme === 'dark' ? 'Light' : 'Dark'} mode
+          <NavLink to="/" end aria-label="Features page"><NavLabel k="features" /></NavLink>
+          <NavLink to="/shipments" aria-label="Shipments page"><NavLabel k="shipments" /></NavLink>
+          <NavLink to="/starters" aria-label="Starters page"><NavLabel k="starters" /></NavLink>
+          <NavLink to="/about" aria-label="About page"><NavLabel k="about" /></NavLink>
+          <button 
+            className="chip" 
+            aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+            aria-pressed={theme === 'dark'}
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          >
+            {theme === 'dark' ? '☀️ Light' : '🌙 Dark'} mode
           </button>
           <LangSwitcher />
           {!token ? (
-            <NavLink to="/login"><NavLabel k="login" /></NavLink>
+            <NavLink to="/login" aria-label="Login page"><NavLabel k="login" /></NavLink>
           ) : (
-            <a href="#" onClick={(e) => { e.preventDefault(); logout() }}><NavLabel k="logout" /></a>
+            <button 
+              className="chip" 
+              onClick={logout}
+              aria-label="Logout from your account"
+            >
+              <NavLabel k="logout" />
+            </button>
           )}
         </nav>
       </header>
@@ -64,7 +81,7 @@ export default function App() {
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
-      <footer>
+      <footer role="contentinfo">
         <small>© {new Date().getFullYear()} HollyShip</small>
       </footer>
       </ErrorBoundary>
@@ -118,9 +135,15 @@ function NavLabel({ k }: { k: string }) {
 function LangSwitcher() {
   const { lang, setLang } = useI18n()
   return (
-    <select aria-label="Language" className="chip" value={lang} onChange={(e) => setLang(e.target.value as any)}>
-      <option value="en">EN</option>
-      <option value="es">ES</option>
+    <select 
+      aria-label="Select language" 
+      className="chip" 
+      value={lang} 
+      onChange={(e) => setLang(e.target.value as any)}
+      title="Change language"
+    >
+      <option value="en">🌐 EN</option>
+      <option value="es">🌐 ES</option>
     </select>
   )
 }

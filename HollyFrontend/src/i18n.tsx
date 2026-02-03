@@ -43,7 +43,23 @@ const tables: Record<Lang, Dict> = { en: EN, es: ES }
 const Ctx = createContext<{ lang: Lang; setLang: (l: Lang) => void; t: (k: string) => string } | null>(null)
 
 export function I18nProvider({ children }: { children: React.ReactNode }) {
-  const [lang, setLang] = useState<Lang>('en')
+  const [lang, setLangState] = useState<Lang>(() => {
+    try {
+      const stored = localStorage.getItem('holly-lang') as Lang | null
+      if (stored === 'en' || stored === 'es') return stored
+    } catch {}
+    return 'en'
+  })
+  
+  const setLang = (newLang: Lang) => {
+    setLangState(newLang)
+    try {
+      localStorage.setItem('holly-lang', newLang)
+      // Update HTML lang attribute for screen readers
+      document.documentElement.lang = newLang
+    } catch {}
+  }
+  
   const t = useMemo(() => (key: string) => tables[lang][key] ?? key, [lang])
   const value = useMemo(() => ({ lang, setLang, t }), [lang, t])
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
