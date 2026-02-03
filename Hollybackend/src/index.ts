@@ -38,6 +38,10 @@ import {
   detectPlatform,
 } from './ecommerce.js';
 import {
+  calculateCarbonFootprint,
+  getCarbonFootprintDescription,
+  calculateCarbonOffsetCost,
+} from './carbonFootprint.js';
   getNotificationPreferences,
   getNotificationPreference,
   upsertNotificationPreference,
@@ -438,6 +442,16 @@ server.post('/v1/shipments/resolve', async (req, reply) => {
     // Predict ETA at creation when possible
     const predictedEta = predictEtaDate(originCoords, destCoords, carrierName, body.trackingNumber)
 
+    // Calculate carbon footprint at creation
+    const carbonFootprint = calculateCarbonFootprint(
+      originCoords.lat,
+      originCoords.lng,
+      destCoords.lat,
+      destCoords.lng,
+      carrierName,
+      undefined // Weight not specified, will use default
+    );
+
     const created = await tx.shipment.create({
       data: {
         userId: effectiveUserId,
@@ -455,6 +469,7 @@ server.post('/v1/shipments/resolve', async (req, reply) => {
         currentLng: originCoords.lng,
         lastEventAt: now,
         eta: predictedEta,
+        carbonFootprintKg: carbonFootprint,
         orderNumberEncrypted:
           body.orderNumber && isCryptoConfigured() ? encryptField(body.orderNumber) : (body.orderNumber ?? null),
       },
@@ -503,6 +518,8 @@ server.post('/v1/shipments/resolve', async (req, reply) => {
     currentLat: shipment.currentLat ?? null,
     currentLng: shipment.currentLng ?? null,
     lastEventAt: shipment.lastEventAt?.toISOString() ?? null,
+    carbonFootprintKg: shipment.carbonFootprintKg ?? null,
+    deliveryNotes: shipment.deliveryNotes ?? null,
     createdAt: shipment.createdAt.toISOString(),
   });
 });
@@ -714,6 +731,8 @@ server.get('/v1/shipments/:id', async (req, reply) => {
     currentLat: shipment.currentLat ?? null,
     currentLng: shipment.currentLng ?? null,
     lastEventAt: shipment.lastEventAt?.toISOString() ?? null,
+    carbonFootprintKg: shipment.carbonFootprintKg ?? null,
+    deliveryNotes: shipment.deliveryNotes ?? null,
     createdAt: shipment.createdAt.toISOString(),
     events: shipment.events.map((e) => ({
       id: e.id.toString(),
@@ -1318,6 +1337,342 @@ setInterval(async () => {
     // ignore
   }
 }, 60_000);
+
+// Saved Addresses endpoints
+
+// Get all saved addresses for a user
+server.get('/v1/users/:userId/addresses', async (req, reply) => {
+  if (!allowRequest(keyFromReq(req, 'rl:addresses:get'), 120, 2)) {
+    return reply.code(429).send({ ok: false, error: 'Too many requests' });
+  }
+  const { userId } = z.object({ userId: z.string() }).parse(req.params);
+  const authUserId = requireAuthUserId(req, reply);
+  if (!authUserId || authUserId !== userId) return;
+
+  const addresses = await prisma.savedAddress.findMany({
+    where: { userId },
+    orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
+  });
+
+  return reply.send({ ok: true, addresses });
+});
+
+// Create a new saved address
+server.post('/v1/users/:userId/addresses', async (req, reply) => {
+  if (!allowRequest(keyFromReq(req, 'rl:addresses:create'), 60, 1)) {
+    return reply.code(429).send({ ok: false, error: 'Too many requests' });
+  }
+  const { userId } = z.object({ userId: z.string() }).parse(req.params);
+  const authUserId = requireAuthUserId(req, reply);
+  if (!authUserId || authUserId !== userId) return;
+
+  const body = z.object({
+    nickname: z.string(),
+    addressLine1: z.string(),
+    addressLine2: z.string().optional(),
+    city: z.string(),
+    state: z.string().optional(),
+    postalCode: z.string(),
+    country: z.string(),
+    instructions: z.string().optional(),
+    isDefault: z.boolean().optional(),
+  }).parse(req.body);
+
+  // If setting as default, unset other defaults
+  if (body.isDefault) {
+    await prisma.savedAddress.updateMany({
+      where: { userId, isDefault: true },
+      data: { isDefault: false },
+    });
+  }
+
+  const address = await prisma.savedAddress.create({
+    data: {
+      userId,
+      ...body,
+    },
+  });
+
+  return reply.send({ ok: true, address });
+});
+
+// Update a saved address
+server.patch('/v1/users/:userId/addresses/:addressId', async (req, reply) => {
+  if (!allowRequest(keyFromReq(req, 'rl:addresses:update'), 60, 1)) {
+    return reply.code(429).send({ ok: false, error: 'Too many requests' });
+  }
+  const { userId, addressId } = z.object({ 
+    userId: z.string(), 
+    addressId: z.string() 
+  }).parse(req.params);
+  const authUserId = requireAuthUserId(req, reply);
+  if (!authUserId || authUserId !== userId) return;
+
+  const body = z.object({
+    nickname: z.string().optional(),
+    addressLine1: z.string().optional(),
+    addressLine2: z.string().optional(),
+    city: z.string().optional(),
+    state: z.string().optional(),
+    postalCode: z.string().optional(),
+    country: z.string().optional(),
+    instructions: z.string().optional(),
+    isDefault: z.boolean().optional(),
+  }).parse(req.body);
+
+  // If setting as default, unset other defaults
+  if (body.isDefault) {
+    await prisma.savedAddress.updateMany({
+      where: { userId, isDefault: true, id: { not: addressId } },
+      data: { isDefault: false },
+    });
+  }
+
+  const address = await prisma.savedAddress.update({
+    where: { 
+      id: addressId,
+      userId: userId, // Ensure the address belongs to the user
+    },
+    data: body,
+  });
+
+  return reply.send({ ok: true, address });
+});
+
+// Delete a saved address
+server.delete('/v1/users/:userId/addresses/:addressId', async (req, reply) => {
+  if (!allowRequest(keyFromReq(req, 'rl:addresses:delete'), 60, 1)) {
+    return reply.code(429).send({ ok: false, error: 'Too many requests' });
+  }
+  const { userId, addressId } = z.object({ 
+    userId: z.string(), 
+    addressId: z.string() 
+  }).parse(req.params);
+  const authUserId = requireAuthUserId(req, reply);
+  if (!authUserId || authUserId !== userId) return;
+
+  await prisma.savedAddress.delete({
+    where: { 
+      id: addressId,
+      userId: userId, // Ensure the address belongs to the user
+    },
+  });
+
+  return reply.send({ ok: true, deleted: true });
+});
+
+// Delivery Preferences endpoints
+
+// Get user's delivery preferences
+server.get('/v1/users/:userId/delivery-preferences', async (req, reply) => {
+  if (!allowRequest(keyFromReq(req, 'rl:prefs:get'), 120, 2)) {
+    return reply.code(429).send({ ok: false, error: 'Too many requests' });
+  }
+  const { userId } = z.object({ userId: z.string() }).parse(req.params);
+  const authUserId = requireAuthUserId(req, reply);
+  if (!authUserId || authUserId !== userId) return;
+
+  let preferences = await prisma.deliveryPreferences.findUnique({
+    where: { userId },
+  });
+
+  // Create default preferences if none exist
+  if (!preferences) {
+    preferences = await prisma.deliveryPreferences.create({
+      data: { userId },
+    });
+  }
+
+  return reply.send({ ok: true, preferences });
+});
+
+// Update delivery preferences
+server.patch('/v1/users/:userId/delivery-preferences', async (req, reply) => {
+  if (!allowRequest(keyFromReq(req, 'rl:prefs:update'), 60, 1)) {
+    return reply.code(429).send({ ok: false, error: 'Too many requests' });
+  }
+  const { userId } = z.object({ userId: z.string() }).parse(req.params);
+  const authUserId = requireAuthUserId(req, reply);
+  if (!authUserId || authUserId !== userId) return;
+
+  const body = z.object({
+    defaultInstructions: z.string().optional(),
+    preferredTimeStart: z.string().optional(),
+    preferredTimeEnd: z.string().optional(),
+    allowReschedule: z.boolean().optional(),
+    allowRedirect: z.boolean().optional(),
+    notifyOnDispatch: z.boolean().optional(),
+    notifyOnDelivery: z.boolean().optional(),
+  }).parse(req.body);
+
+  const preferences = await prisma.deliveryPreferences.upsert({
+    where: { userId },
+    create: { userId, ...body },
+    update: body,
+  });
+
+  return reply.send({ ok: true, preferences });
+});
+
+// Delivery Notes endpoints
+
+// Update delivery notes for a shipment
+server.patch('/v1/shipments/:id/delivery-notes', async (req, reply) => {
+  const { id } = z.object({ id: z.string() }).parse(req.params);
+  const body = z.object({
+    deliveryNotes: z.string(),
+  }).parse(req.body);
+
+  const shipment = await prisma.shipment.update({
+    where: { id },
+    data: { deliveryNotes: body.deliveryNotes },
+  });
+
+  return reply.send({ ok: true, shipment });
+});
+
+// Carbon Footprint endpoints
+
+// Calculate and update carbon footprint for a shipment
+server.post('/v1/shipments/:id/calculate-carbon', async (req, reply) => {
+  const { id } = z.object({ id: z.string() }).parse(req.params);
+  const body = z.object({
+    weightKg: z.number().optional(),
+  }).parse(req.body);
+
+  const shipment = await prisma.shipment.findUnique({
+    where: { id },
+    include: { carrier: true },
+  });
+
+  if (!shipment) {
+    return reply.code(404).send({ ok: false, error: 'Shipment not found' });
+  }
+
+  const carbonFootprint = calculateCarbonFootprint(
+    shipment.originLat,
+    shipment.originLng,
+    shipment.destinationLat,
+    shipment.destinationLng,
+    shipment.carrier?.code || null,
+    body.weightKg
+  );
+
+  if (carbonFootprint !== null) {
+    await prisma.shipment.update({
+      where: { id },
+      data: { carbonFootprintKg: carbonFootprint },
+    });
+  }
+
+  return reply.send({
+    ok: true,
+    carbonFootprintKg: carbonFootprint,
+    description: carbonFootprint ? getCarbonFootprintDescription(carbonFootprint) : null,
+    offsetCostUsd: carbonFootprint ? calculateCarbonOffsetCost(carbonFootprint) : null,
+  });
+});
+
+// Get carbon footprint statistics for a user
+server.get('/v1/users/:userId/carbon-stats', async (req, reply) => {
+  if (!allowRequest(keyFromReq(req, 'rl:carbon:stats'), 120, 2)) {
+    return reply.code(429).send({ ok: false, error: 'Too many requests' });
+  }
+  const { userId } = z.object({ userId: z.string() }).parse(req.params);
+  const authUserId = requireAuthUserId(req, reply);
+  if (!authUserId || authUserId !== userId) return;
+
+  const shipments = await prisma.shipment.findMany({
+    where: { 
+      userId,
+      carbonFootprintKg: { not: null },
+    },
+    select: {
+      carbonFootprintKg: true,
+      status: true,
+      createdAt: true,
+    },
+  });
+
+  const totalCarbon = shipments.reduce((sum, s) => sum + (s.carbonFootprintKg || 0), 0);
+  const avgCarbon = shipments.length > 0 ? totalCarbon / shipments.length : 0;
+  const totalOffsetCost = calculateCarbonOffsetCost(totalCarbon);
+
+  return reply.send({
+    ok: true,
+    stats: {
+      totalShipments: shipments.length,
+      totalCarbonKg: Math.round(totalCarbon * 100) / 100,
+      averageCarbonKg: Math.round(avgCarbon * 100) / 100,
+      totalOffsetCostUsd: totalOffsetCost,
+    },
+  });
+});
+
+// Delivery Photos endpoints
+
+// Upload a delivery photo
+server.post('/v1/shipments/:id/photos', async (req, reply) => {
+  const { id } = z.object({ id: z.string() }).parse(req.params);
+  const body = z.object({
+    photoUrl: z.string().url(),
+    photoType: z.enum(['proof_of_delivery', 'package_condition', 'location']),
+    metadata: z.record(z.unknown()).optional(),
+  }).parse(req.body);
+
+  // Get authenticated user if available
+  const authUserId = getAuthUserId(req);
+
+  const photo = await prisma.deliveryPhoto.create({
+    data: {
+      shipmentId: id,
+      photoUrl: body.photoUrl,
+      photoType: body.photoType,
+      uploadedBy: authUserId ?? 'anonymous',
+      metadata: body.metadata as Prisma.InputJsonValue | undefined,
+    },
+  });
+
+  return reply.send({ ok: true, photo });
+});
+
+// Get all photos for a shipment
+server.get('/v1/shipments/:id/photos', async (req, reply) => {
+  const { id } = z.object({ id: z.string() }).parse(req.params);
+
+  const photos = await prisma.deliveryPhoto.findMany({
+    where: { shipmentId: id },
+    orderBy: { uploadedAt: 'desc' },
+  });
+
+  return reply.send({ ok: true, photos });
+});
+
+// Delete a delivery photo
+server.delete('/v1/shipments/:shipmentId/photos/:photoId', async (req, reply) => {
+  const { shipmentId, photoId } = z.object({ 
+    shipmentId: z.string(),
+    photoId: z.string() 
+  }).parse(req.params);
+
+  // Verify the photo exists and belongs to the specified shipment
+  const photo = await prisma.deliveryPhoto.findFirst({
+    where: { 
+      id: photoId,
+      shipmentId: shipmentId,
+    },
+  });
+
+  if (!photo) {
+    return reply.code(404).send({ ok: false, error: 'Photo not found' });
+  }
+
+  await prisma.deliveryPhoto.delete({
+    where: { id: photoId },
+  });
+
+  return reply.send({ ok: true, deleted: true });
+});
 
 // Consent management endpoints
 
