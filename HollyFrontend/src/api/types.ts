@@ -114,3 +114,23 @@ export interface LoyaltyResponse {
   points: number
   tier: string
 }
+
+export type NotificationMethod = 'EMAIL' | 'SMS'
+
+export type NotificationFrequency = 
+  | 'REAL_TIME' 
+  | 'DAILY_SUMMARY' 
+  | 'OUT_FOR_DELIVERY_ONLY'
+
+export interface NotificationPreferences {
+  methods: NotificationMethod[]
+  frequency: NotificationFrequency
+  enabled: boolean
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface NotificationPreferencesResponse {
+  ok: boolean
+  preferences: NotificationPreferences
+}

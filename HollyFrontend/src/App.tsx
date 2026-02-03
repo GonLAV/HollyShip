@@ -5,6 +5,7 @@ import FeaturesPage from './pages/FeaturesPage'
 import LoginPage from './pages/LoginPage'
 import ShipmentsPage from './pages/ShipmentsPage'
 import ShipmentDetailPage from './pages/ShipmentDetailPage'
+import NotificationPreferencesPage from './pages/NotificationPreferencesPage'
 import ProtectedRoute from './components/ProtectedRoute'
 import { useSessionStore } from './state/session'
 import { useEffect, useState } from 'react'
@@ -33,6 +34,13 @@ export default function App() {
         <nav className="topnav" aria-label="Primary navigation">
           <div className="brand"><Link to="/" aria-label="HollyShip home">HollyShip</Link></div>
           <div className="spacer" />
+          <NavLink to="/" end><NavLabel k="features" /></NavLink>
+          <NavLink to="/shipments"><NavLabel k="shipments" /></NavLink>
+          <NavLink to="/notifications"><NavLabel k="notifications" /></NavLink>
+          <NavLink to="/starters"><NavLabel k="starters" /></NavLink>
+          <NavLink to="/about"><NavLabel k="about" /></NavLink>
+          <button className="chip" aria-label="Toggle theme" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+            {theme === 'dark' ? 'Light' : 'Dark'} mode
           <NavLink to="/" end aria-label="Features page"><NavLabel k="features" /></NavLink>
           <NavLink to="/shipments" aria-label="Shipments page"><NavLabel k="shipments" /></NavLink>
           <NavLink to="/starters" aria-label="Starters page"><NavLabel k="starters" /></NavLink>
@@ -66,6 +74,7 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/shipments" element={<ProtectedRoute><ShipmentsPage /></ProtectedRoute>} />
           <Route path="/shipments/:id" element={<ProtectedRoute><ShipmentDetailPage /></ProtectedRoute>} />
+          <Route path="/notifications" element={<ProtectedRoute><NotificationPreferencesPage /></ProtectedRoute>} />
           <Route path="/starters" element={<StartersIndex />} />
           <Route path="/starters/:slug" element={<StartersRouter />} />
           <Route path="/about" element={<About />} />
