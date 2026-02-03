@@ -40,6 +40,12 @@ model User {
   usageMeters    UsageMeter[]
   consents       Consent[]
   savedAddresses SavedAddress[]
+  orders                  Order[]
+  loyaltyEntries          LoyaltyLedger[]
+  shipments               Shipment[]
+  usageMeters             UsageMeter[]
+  consents                Consent[]
+  notificationPreferences NotificationPreference[]
 }
 
 model UsageMeter {
@@ -249,4 +255,19 @@ model DeliveryPreferences {
   updatedAt           DateTime @updatedAt
 
   @@index([userId])
+model NotificationPreference {
+  id         String   @id @default(uuid())
+  userId     String
+  method     String   // 'email', 'push', 'webhook', 'sms'
+  frequency  String   // 'realtime', 'daily', 'weekly', 'never'
+  enabled    Boolean  @default(true)
+  metadata   Json?    // extensible field for method-specific config (e.g., webhook URLs)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, method])
+  @@index([userId])
+  @@index([userId, enabled])
 }

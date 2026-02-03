@@ -42,6 +42,15 @@ import {
   getCarbonFootprintDescription,
   calculateCarbonOffsetCost,
 } from './carbonFootprint.js';
+  getNotificationPreferences,
+  getNotificationPreference,
+  upsertNotificationPreference,
+  updateNotificationPreference,
+  deleteNotificationPreference,
+  CreateNotificationPreferenceSchema,
+  UpdateNotificationPreferenceSchema,
+  NotificationMethodSchema,
+} from './notificationPreferences.js';
 
 const PORT = Number(process.env.PORT || 8080);
 
@@ -1738,6 +1747,189 @@ server.post('/v1/me/consents', async (req, reply) => {
     },
   });
 });
+
+// ============================================================================
+// Notification Preferences
+// ============================================================================
+
+server.get('/v1/me/notification-preferences', async (req, reply) => {
+  const rlKey = keyFromReq(req, 'rl:notif:list');
+  if (!allowRequest(rlKey, 60, 1)) {
+    return reply.status(429).send({ error: 'Rate limit exceeded' });
+  }
+
+  const userId = requireAuthUserId(req, reply);
+  if (!userId) return;
+
+  const preferences = await getNotificationPreferences(userId);
+
+  return reply.send({
+    ok: true,
+    preferences: preferences.map((p) => ({
+      id: p.id,
+      method: p.method,
+      frequency: p.frequency,
+      enabled: p.enabled,
+      metadata: p.metadata,
+      createdAt: p.createdAt.toISOString(),
+      updatedAt: p.updatedAt.toISOString(),
+    })),
+  });
+});
+
+server.get('/v1/me/notification-preferences/:method', async (req, reply) => {
+  const rlKey = keyFromReq(req, 'rl:notif:get');
+  if (!allowRequest(rlKey, 60, 1)) {
+    return reply.status(429).send({ error: 'Rate limit exceeded' });
+  }
+
+  const userId = requireAuthUserId(req, reply);
+  if (!userId) return;
+
+  const methodParam = (req.params as { method?: string }).method;
+  const parseResult = NotificationMethodSchema.safeParse(methodParam);
+  if (!parseResult.success) {
+    return reply.status(400).send({ error: 'Invalid notification method' });
+  }
+
+  const preference = await getNotificationPreference(userId, parseResult.data);
+  if (!preference) {
+    return reply.status(404).send({ error: 'Notification preference not found' });
+  }
+
+  return reply.send({
+    ok: true,
+    preference: {
+      id: preference.id,
+      method: preference.method,
+      frequency: preference.frequency,
+      enabled: preference.enabled,
+      metadata: preference.metadata,
+      createdAt: preference.createdAt.toISOString(),
+      updatedAt: preference.updatedAt.toISOString(),
+    },
+  });
+});
+
+server.post('/v1/me/notification-preferences', async (req, reply) => {
+  const rlKey = keyFromReq(req, 'rl:notif:create');
+  if (!allowRequest(rlKey, 30, 0.5)) {
+    return reply.status(429).send({ error: 'Rate limit exceeded' });
+  }
+
+  const userId = requireAuthUserId(req, reply);
+  if (!userId) return;
+
+  const parseResult = CreateNotificationPreferenceSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    return reply.status(400).send({ 
+      error: 'Invalid request body',
+      details: parseResult.error.errors,
+    });
+  }
+
+  try {
+    const preference = await upsertNotificationPreference(
+      userId,
+      parseResult.data.method,
+      parseResult.data
+    );
+
+    return reply.status(201).send({
+      ok: true,
+      preference: {
+        id: preference.id,
+        method: preference.method,
+        frequency: preference.frequency,
+        enabled: preference.enabled,
+        metadata: preference.metadata,
+        createdAt: preference.createdAt.toISOString(),
+        updatedAt: preference.updatedAt.toISOString(),
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to create notification preference';
+    return reply.status(400).send({ error: message });
+  }
+});
+
+server.patch('/v1/me/notification-preferences/:method', async (req, reply) => {
+  const rlKey = keyFromReq(req, 'rl:notif:update');
+  if (!allowRequest(rlKey, 30, 0.5)) {
+    return reply.status(429).send({ error: 'Rate limit exceeded' });
+  }
+
+  const userId = requireAuthUserId(req, reply);
+  if (!userId) return;
+
+  const methodParam = (req.params as { method?: string }).method;
+  const methodParseResult = NotificationMethodSchema.safeParse(methodParam);
+  if (!methodParseResult.success) {
+    return reply.status(400).send({ error: 'Invalid notification method' });
+  }
+
+  const parseResult = UpdateNotificationPreferenceSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    return reply.status(400).send({ 
+      error: 'Invalid request body',
+      details: parseResult.error.errors,
+    });
+  }
+
+  try {
+    const preference = await updateNotificationPreference(
+      userId,
+      methodParseResult.data,
+      parseResult.data
+    );
+
+    return reply.send({
+      ok: true,
+      preference: {
+        id: preference.id,
+        method: preference.method,
+        frequency: preference.frequency,
+        enabled: preference.enabled,
+        metadata: preference.metadata,
+        createdAt: preference.createdAt.toISOString(),
+        updatedAt: preference.updatedAt.toISOString(),
+      },
+    });
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'P2025') {
+      return reply.status(404).send({ error: 'Notification preference not found' });
+    }
+    const message = error instanceof Error ? error.message : 'Failed to update notification preference';
+    return reply.status(400).send({ error: message });
+  }
+});
+
+server.delete('/v1/me/notification-preferences/:method', async (req, reply) => {
+  const rlKey = keyFromReq(req, 'rl:notif:delete');
+  if (!allowRequest(rlKey, 30, 0.5)) {
+    return reply.status(429).send({ error: 'Rate limit exceeded' });
+  }
+
+  const userId = requireAuthUserId(req, reply);
+  if (!userId) return;
+
+  const methodParam = (req.params as { method?: string }).method;
+  const parseResult = NotificationMethodSchema.safeParse(methodParam);
+  if (!parseResult.success) {
+    return reply.status(400).send({ error: 'Invalid notification method' });
+  }
+
+  try {
+    await deleteNotificationPreference(userId, parseResult.data);
+    return reply.send({ ok: true });
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'P2025') {
+      return reply.status(404).send({ error: 'Notification preference not found' });
+    }
+    return reply.status(500).send({ error: 'Failed to delete notification preference' });
+  }
+});
+
 
 server.get('/v1/me/export', async (req, reply) => {
   const userId = requireAuthUserId(req, reply);
