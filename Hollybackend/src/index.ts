@@ -9,7 +9,7 @@ import type { Prisma } from '@prisma/client';
 import { tierForPoints } from './loyalty.js';
 import { guessCarrierFromTrackingNumber, detectCarriers, probeCarriers } from './carrierResolver.js';
 import { aggregateCarriers } from './aggregator.js';
-import { coordsForDestination, coordsForOrigin, interpolateLatLng, progressForStatus, predictEtaDate } from './geo.js';
+import { coordsForDestination, coordsForOrigin, interpolateLatLng, progressForStatus, predictEtaDate, predictEtaWithConfidence, optimizeCarrierPickup } from './geo.js';
 import { allowRequest, keyFromReq } from './rateLimit.js';
 import {
   createEmailCode,
@@ -771,6 +771,85 @@ server.post('/v1/shipments/:id/refresh', async (req, reply) => {
 
   // MVP stub: accept request; later enqueue job.
   return reply.code(202).send({ accepted: true });
+});
+
+// Helper function to convert factor to percentage
+function toPercentage(factor: number): number {
+  return Math.round(factor * 100);
+}
+
+// New endpoint: Get ETA prediction with confidence scoring
+server.get('/v1/shipments/:id/eta-confidence', async (req, reply) => {
+  const paramsSchema = z.object({ id: z.string().uuid() });
+  const { id } = paramsSchema.parse(req.params);
+
+  const authUserId = getAuthUserId(req);
+
+  const shipment = await prisma.shipment.findUnique({
+    where: { id },
+    include: { carrier: true },
+  });
+
+  if (!shipment) return reply.code(404).send({ ok: false, error: 'Shipment not found' });
+
+  if (authUserId && shipment.userId && shipment.userId !== authUserId) {
+    return reply.code(403).send({ ok: false, error: 'Forbidden' });
+  }
+
+  // Calculate ETA with confidence
+  const origin = { lat: shipment.originLat ?? 0, lng: shipment.originLng ?? 0 };
+  const destination = { lat: shipment.destinationLat ?? 0, lng: shipment.destinationLng ?? 0 };
+  const carrierName = shipment.carrier?.name ?? null;
+  
+  const prediction = predictEtaWithConfidence(origin, destination, carrierName, shipment.trackingNumber);
+
+  return reply.send({
+    ok: true,
+    shipmentId: id,
+    eta: {
+      estimatedDate: prediction.estimatedDate.toISOString(),
+      confidence: prediction.confidence,
+      confidenceScore: prediction.confidenceScore,
+      weatherFactor: toPercentage(prediction.weatherFactor),
+      trafficFactor: toPercentage(prediction.trafficFactor),
+      minDays: prediction.minDays,
+      maxDays: prediction.maxDays,
+      estimatedDays: prediction.estimatedDays,
+    },
+  });
+});
+
+// New endpoint: Get optimized carrier pickup options
+server.post('/v1/shipments/optimize-pickup', async (req, reply) => {
+  const bodySchema = z.object({
+    origin: z.object({
+      lat: z.number().min(-90).max(90),
+      lng: z.number().min(-180).max(180),
+    }),
+    destination: z.object({
+      lat: z.number().min(-90).max(90),
+      lng: z.number().min(-180).max(180),
+    }),
+    carriers: z.array(z.string()).min(1).max(10),
+    trackingNumber: z.string().optional(),
+  });
+
+  const { origin, destination, carriers, trackingNumber } = bodySchema.parse(req.body);
+
+  const options = optimizeCarrierPickup(origin, destination, carriers, trackingNumber);
+
+  return reply.send({
+    ok: true,
+    options: options.map(opt => ({
+      carrierName: opt.carrierName,
+      estimatedPickupTime: opt.estimatedPickupTime.toISOString(),
+      estimatedDeliveryTime: opt.estimatedDeliveryTime.toISOString(),
+      transitDays: opt.transitDays,
+      reliabilityScore: opt.reliabilityScore,
+      costEstimate: opt.costEstimate,
+      recommendation: opt.recommendation,
+    })),
+  });
 });
 
 server.get('/v1/users/:id/loyalty', async (req, reply) => {
